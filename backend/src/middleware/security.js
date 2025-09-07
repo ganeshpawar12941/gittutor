@@ -1,9 +1,9 @@
-const helmet = require('helmet');
-const hpp = require('hpp');
-const xss = require('xss-clean');
-const mongoSanitize = require('express-mongo-sanitize');
-const rateLimit = require('express-rate-limit');
-const { errorResponse } = require('../utils/apiResponse');
+import helmet from 'helmet';
+import hpp from 'hpp';
+import xss from 'xss-clean';
+import mongoSanitize from 'express-mongo-sanitize';
+import rateLimit from 'express-rate-limit';
+import { errorResponse } from '../utils/apiResponse.js';
 
 // Set security HTTP headers
 const setSecurityHeaders = helmet({
@@ -116,7 +116,7 @@ const setSecurityPolicies = (req, res, next) => {
     next();
 };
 
-module.exports = {
+export {
     setSecurityHeaders,
     preventParameterPollution,
     sanitizeXSS,

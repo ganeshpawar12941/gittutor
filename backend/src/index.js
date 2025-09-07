@@ -1,8 +1,8 @@
-const mongoose = require('mongoose');
-const app = require('./app');
+import mongoose from 'mongoose';
+import app from './app.js';
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/college-lectures', {
+mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 })

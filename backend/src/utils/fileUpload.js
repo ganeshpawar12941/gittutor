@@ -1,7 +1,13 @@
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
+import { ALLOWED_FILE_TYPES, getFileCategory, getMaxFileSize } from './fileValidator.js';
+import { errorResponse } from './apiResponse.js';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configure storage for different file types
 const storage = multer.diskStorage({
@@ -97,7 +103,7 @@ const getFileUrl = (req, filePath) => {
     return `${baseUrl}/${filePath.replace(/\\/g, '/')}`;
 };
 
-module.exports = {
+export {
     uploadFile,
     uploadFiles,
     uploadFields,

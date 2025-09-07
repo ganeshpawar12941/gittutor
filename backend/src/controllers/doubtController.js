@@ -1,13 +1,13 @@
-const Doubt = require('../models/Doubt');
-const Course = require('../models/Course');
-const Video = require('../models/Video');
-const User = require('../models/User');
-const { validationResult } = require('express-validator');
+import Doubt from '../models/Doubt.js';
+import Course from '../models/Course.js';
+import Video from '../models/Video.js';
+import User from '../models/User.js';
+import { validationResult } from 'express-validator';
 
 // @desc    Get all doubts
 // @route   GET /api/doubts
 // @access  Private
-exports.getDoubts = async (req, res) => {
+export const getDoubts = async (req, res) => {
     try {
         // Copy req.query
         const reqQuery = { ...req.query };
@@ -113,7 +113,7 @@ exports.getDoubts = async (req, res) => {
 // @desc    Get single doubt
 // @route   GET /api/doubts/:id
 // @access  Private
-exports.getDoubt = async (req, res) => {
+export const getDoubt = async (req, res) => {
     try {
         const doubt = await Doubt.findById(req.params.id)
             .populate('course', 'title code')
@@ -189,7 +189,7 @@ exports.getDoubt = async (req, res) => {
 // @desc    Create doubt
 // @route   POST /api/doubts
 // @access  Private
-exports.createDoubt = async (req, res) => {
+export const createDoubt = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -283,7 +283,7 @@ exports.createDoubt = async (req, res) => {
 // @desc    Update doubt
 // @route   PUT /api/doubts/:id
 // @access  Private
-exports.updateDoubt = async (req, res) => {
+export const updateDoubt = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -344,7 +344,7 @@ exports.updateDoubt = async (req, res) => {
 // @desc    Delete doubt
 // @route   DELETE /api/doubts/:id
 // @access  Private
-exports.deleteDoubt = async (req, res) => {
+export const deleteDoubt = async (req, res) => {
     try {
         const doubt = await Doubt.findById(req.params.id);
 
@@ -387,7 +387,7 @@ exports.deleteDoubt = async (req, res) => {
 // @desc    Add answer to doubt
 // @route   POST /api/doubts/:id/answers
 // @access  Private
-exports.addAnswer = async (req, res) => {
+export const addAnswer = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -481,7 +481,7 @@ exports.addAnswer = async (req, res) => {
 // @desc    Update answer
 // @route   PUT /api/doubts/:id/answers/:answerId
 // @access  Private
-exports.updateAnswer = async (req, res) => {
+export const updateAnswer = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -554,7 +554,7 @@ exports.updateAnswer = async (req, res) => {
 // @desc    Delete answer
 // @route   DELETE /api/doubts/:id/answers/:answerId
 // @access  Private
-exports.deleteAnswer = async (req, res) => {
+export const deleteAnswer = async (req, res) => {
     try {
         let doubt = await Doubt.findById(req.params.id);
 
@@ -629,7 +629,7 @@ exports.deleteAnswer = async (req, res) => {
 // @desc    Mark answer as accepted
 // @route   PUT /api/doubts/:id/answers/:answerId/accept
 // @access  Private
-exports.acceptAnswer = async (req, res) => {
+export const acceptAnswer = async (req, res) => {
     try {
         let doubt = await Doubt.findById(req.params.id);
 
@@ -700,7 +700,7 @@ exports.acceptAnswer = async (req, res) => {
 // @desc    Vote on answer
 // @route   PUT /api/doubts/:id/answers/:answerId/vote
 // @access  Private
-exports.voteAnswer = async (req, res) => {
+export const voteAnswer = async (req, res) => {
     try {
         const { vote } = req.body; // 'up' or 'down'
 

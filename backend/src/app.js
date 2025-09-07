@@ -1,15 +1,19 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Import routes
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const courseRoutes = require('./routes/courses');
-const videoRoutes = require('./routes/videos');
-const commentRoutes = require('./routes/comments');
-const doubtRoutes = require('./routes/doubts');
+import authRoutes from './routes/auth.js';
+import userRoutes from './routes/users.js';
+import courseRoutes from './routes/courses.js';
+import videoRoutes from './routes/videos.js';
+import commentRoutes from './routes/comments.js';
+import doubtRoutes from './routes/doubts.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -32,4 +36,4 @@ app.use((err, req, res, next) => {
     res.status(500).json({ message: 'Something went wrong!' });
 });
 
-module.exports = app;
+export default app;

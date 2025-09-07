@@ -1,6 +1,8 @@
-const { errorResponse } = require('../utils/apiResponse');
-const { ValidationError } = require('mongoose').Error;
-const { JsonWebTokenError, TokenExpiredError } = require('jsonwebtoken');
+import { errorResponse } from '../utils/apiResponse.js';
+import { Error as MongooseError } from 'mongoose';
+import { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
+
+const { ValidationError } = MongooseError;
 
 /**
  * Error handling middleware for Express
@@ -55,4 +57,4 @@ const errorHandler = (err, req, res, next) => {
     errorResponse(res, statusCode, message);
 };
 
-module.exports = errorHandler;
+export default errorHandler;

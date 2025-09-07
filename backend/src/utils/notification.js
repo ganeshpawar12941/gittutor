@@ -1,8 +1,8 @@
-const nodemailer = require('nodemailer');
-const { v4: uuidv4 } = require('uuid');
-const Notification = require('../models/Notification');
-const User = require('../models/User');
-const { errorResponse } = require('./apiResponse');
+import nodemailer from 'nodemailer';
+import { v4 as uuidv4 } from 'uuid';
+import Notification from '../models/Notification.js';
+import User from '../models/User.js';
+import { errorResponse } from './apiResponse.js';
 
 // Email transporter configuration
 const transporter = nodemailer.createTransport({
@@ -222,7 +222,7 @@ const sendBulkNotification = async (userIds, notificationData, sendEmailNotifica
     }
 };
 
-module.exports = {
+export {
     sendEmail,
     createInAppNotification,
     markAsRead,

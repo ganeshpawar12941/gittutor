@@ -1,11 +1,11 @@
-const jwt = require('jsonwebtoken');
-const { promisify } = require('util');
-const User = require('../models/User');
-const { unauthorized } = require('./apiResponse');
+import jwt from 'jsonwebtoken';
+import { promisify } from 'util';
+import User from '../models/User.js';
+import { unauthorized, forbidden } from './apiResponse.js';
 
 // Promisify JWT functions
-const signToken = promisify(jwt.sign);
-const verifyToken = promisify(jwt.verify);
+export const signToken = promisify(jwt.sign);
+export const verifyToken = promisify(jwt.verify);
 
 /**
  * Generate JWT token
@@ -13,7 +13,7 @@ const verifyToken = promisify(jwt.verify);
  * @param {string} role - User role
  * @returns {Promise<string>} JWT token
  */
-const generateToken = async (userId, role) => {
+export const generateToken = async (userId, role) => {
     try {
         const token = await signToken(
             { id: userId, role },
@@ -32,7 +32,7 @@ const generateToken = async (userId, role) => {
  * @param {string} token - JWT token
  * @returns {Promise<Object>} Decoded token payload
  */
-const verifyJwtToken = async (token) => {
+export const verifyJwtToken = async (token) => {
     try {
         const decoded = await verifyToken(token, process.env.JWT_SECRET);
         return decoded;
@@ -46,7 +46,7 @@ const verifyJwtToken = async (token) => {
  * Middleware to protect routes
  * Verifies the JWT token and attaches the user to the request object
  */
-const protect = async (req, res, next) => {
+export const protect = async (req, res, next) => {
     try {
         let token;
         
@@ -97,7 +97,7 @@ const protect = async (req, res, next) => {
  * Middleware to restrict routes to specific roles
  * @param {...string} roles - Allowed roles
  */
-const authorize = (...roles) => {
+export const authorize = (...roles) => {
     return (req, res, next) => {
         if (!roles.includes(req.user.role)) {
             return forbidden(res, `User role ${req.user.role} is not authorized to access this route`);
@@ -106,9 +106,3 @@ const authorize = (...roles) => {
     };
 };
 
-module.exports = {
-    generateToken,
-    verifyJwtToken,
-    protect,
-    authorize
-};

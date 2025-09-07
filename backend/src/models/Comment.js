@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const commentSchema = new mongoose.Schema({
     content: {
@@ -50,4 +50,4 @@ const commentSchema = new mongoose.Schema({
 // Add index for better query performance
 commentSchema.index({ video: 1, timestamp: 1 });
 
-module.exports = mongoose.model('Comment', commentSchema);
+export default mongoose.model('Comment', commentSchema);

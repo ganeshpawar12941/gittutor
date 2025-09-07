@@ -1,7 +1,11 @@
-const ffmpeg = require('fluent-ffmpeg');
-const path = require('path');
-const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
+import ffmpeg from 'fluent-ffmpeg';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+import { v4 as uuidv4 } from 'uuid';
 
 // Configure ffmpeg path if needed
 if (process.env.FFMPEG_PATH) {
@@ -13,7 +17,7 @@ if (process.env.FFMPEG_PATH) {
  * @param {string} filePath - Path to the video file
  * @returns {Promise<Object>} Video metadata
  */
-const getVideoMetadata = (filePath) => {
+export const getVideoMetadata = async (filePath) => {
     return new Promise((resolve, reject) => {
         ffmpeg.ffprobe(filePath, (err, metadata) => {
             if (err) return reject(new Error('Could not retrieve video metadata'));
@@ -49,7 +53,7 @@ const getVideoMetadata = (filePath) => {
  * @param {Object} options - Thumbnail options
  * @returns {Promise<string>} Path to the generated thumbnail
  */
-const generateThumbnail = (filePath, options = {}) => {
+export const generateThumbnail = async (filePath, options = {}) => {
     return new Promise((resolve, reject) => {
         const {
             time = 1,
@@ -81,7 +85,7 @@ const generateThumbnail = (filePath, options = {}) => {
  * @param {Object} options - Conversion options
  * @returns {Promise<Object>} Conversion result
  */
-const convertVideo = (filePath, options = {}) => {
+export const convertVideo = async (filePath, options = {}) => {
     return new Promise((resolve, reject) => {
         const {
             format = 'mp4',
@@ -110,8 +114,3 @@ const convertVideo = (filePath, options = {}) => {
     });
 };
 
-module.exports = {
-    getVideoMetadata,
-    generateThumbnail,
-    convertVideo
-};

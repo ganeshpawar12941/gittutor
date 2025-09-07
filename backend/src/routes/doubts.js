@@ -1,7 +1,7 @@
-const express = require('express');
-const { check } = require('express-validator');
-const { protect } = require('../middleware/auth');
-const {
+import express from 'express';
+import { check } from 'express-validator';
+import { protect } from '../middleware/auth.js';
+import {
     getDoubts,
     getDoubt,
     createDoubt,
@@ -12,7 +12,7 @@ const {
     deleteAnswer,
     acceptAnswer,
     voteAnswer
-} = require('../controllers/doubtController');
+} from '../controllers/doubtController.js';
 
 const router = express.Router();
 

@@ -61,9 +61,9 @@ const serverError = (res, error) => {
     errorResponse(res, 500, 'Internal Server Error');
 };
 
-module.exports = {
-    success: successResponse,
-    error: errorResponse,
+export {
+    successResponse as success,
+    errorResponse as error,
     notFound,
     unauthorized,
     forbidden,

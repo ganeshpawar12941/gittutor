@@ -1,7 +1,11 @@
-const fs = require('fs');
-const path = require('path');
-const morgan = require('morgan');
-const rfs = require('rotating-file-stream');
+import fs from 'fs';
+import path from 'path';
+import morgan from 'morgan';
+import rfs from 'rotating-file-stream';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Ensure log directory exists
 const logDirectory = path.join(__dirname, '..', '..', 'logs');
@@ -68,7 +72,7 @@ const requestLogger = (req, res, next) => {
     next();
 };
 
-module.exports = {
+export {
     consoleLogger,
     fileLogger,
     errorLogger,

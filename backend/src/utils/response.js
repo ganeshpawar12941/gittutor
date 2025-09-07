@@ -1,4 +1,4 @@
-const { errorResponse } = require('./apiResponse');
+import { errorResponse } from './apiResponse.js';
 
 /**
  * Send a success response with data
@@ -155,7 +155,7 @@ const serverError = (res, message = 'Internal Server Error') => {
     return errorResponse(res, 500, message);
 };
 
-module.exports = {
+export {
     successResponse,
     paginatedResponse,
     createdResponse,
@@ -166,5 +166,5 @@ module.exports = {
     notFound,
     conflict,
     validationError,
-    serverError,
+    serverError
 };

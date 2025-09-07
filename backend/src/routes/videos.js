@@ -1,17 +1,22 @@
-const express = require('express');
-const { check } = require('express-validator');
-const { protect, authorize } = require('../middleware/auth');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const {
+import express from 'express';
+import { check } from 'express-validator';
+import { protect, authorize } from '../middleware/auth.js';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+import {
     getVideos,
     getVideo,
     uploadVideo,
     updateVideo,
     deleteVideo,
     getVideosByCourse
-} = require('../controllers/videoController');
+} from '../controllers/videoController.js';
 
 const router = express.Router();
 

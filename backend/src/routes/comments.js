@@ -1,13 +1,13 @@
-const express = require('express');
-const { check } = require('express-validator');
-const { protect } = require('../middleware/auth');
-const {
+import express from 'express';
+import { check } from 'express-validator';
+import { protect } from '../middleware/auth.js';
+import {
     getComments,
     addComment,
     updateComment,
     deleteComment,
     addReply
-} = require('../controllers/commentController');
+} from '../controllers/commentController.js';
 
 const router = express.Router();
 

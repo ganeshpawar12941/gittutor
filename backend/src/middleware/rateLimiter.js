@@ -1,5 +1,5 @@
-const rateLimit = require('express-rate-limit');
-const { errorResponse } = require('../utils/apiResponse');
+import rateLimit from 'express-rate-limit';
+import { errorResponse } from '../utils/apiResponse.js';
 
 // Rate limiting configuration
 const apiLimiter = rateLimit({
@@ -25,7 +25,4 @@ const authLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-module.exports = {
-    apiLimiter,
-    authLimiter
-};
+export { apiLimiter, authLimiter };

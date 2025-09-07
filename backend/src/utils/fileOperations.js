@@ -1,11 +1,27 @@
-const fs = require('fs').promises;
-const fsSync = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-const mime = require('mime-types');
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const { errorResponse } = require('./apiResponse');
+import fs from 'fs';
+import path from 'path';
+import { promisify } from 'util';
+import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
+import mime from 'mime-types';
+import { 
+  S3Client, 
+  PutObjectCommand, 
+  GetObjectCommand, 
+  DeleteObjectCommand, 
+  HeadObjectCommand 
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { errorResponse } from './apiResponse.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const readdir = promisify(fs.readdir);
+const unlink = promisify(fs.unlink);
+const stat = promisify(fs.stat);
+const mkdir = promisify(fs.mkdir);
+const copyFile = promisify(fs.copyFile);
 
 // Configure AWS S3 client if environment variables are set
 let s3Client;
@@ -292,7 +308,7 @@ const getFileInfo = async (filePath) => {
     }
 };
 
-module.exports = {
+export {
     // Local file operations
     fileExists,
     readFile,

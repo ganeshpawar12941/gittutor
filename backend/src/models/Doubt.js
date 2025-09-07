@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const doubtSchema = new mongoose.Schema({
     title: {
@@ -80,4 +80,4 @@ const doubtSchema = new mongoose.Schema({
 doubtSchema.index({ course: 1, status: 1, isResolved: 1 });
 doubtSchema.index({ askedBy: 1, status: 1 });
 
-module.exports = mongoose.model('Doubt', doubtSchema);
+export default mongoose.model('Doubt', doubtSchema);

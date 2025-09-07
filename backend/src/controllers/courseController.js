@@ -1,11 +1,11 @@
-const Course = require('../models/Course');
-const User = require('../models/User');
-const { validationResult } = require('express-validator');
+import Course from '../models/Course.js';
+import User from '../models/User.js';
+import { validationResult } from 'express-validator';
 
 // @desc    Get all courses
 // @route   GET /api/courses
 // @access  Public
-exports.getCourses = async (req, res) => {
+export const getCourses = async (req, res) => {
     try {
         // Copy req.query
         const reqQuery = { ...req.query };
@@ -86,7 +86,7 @@ exports.getCourses = async (req, res) => {
 // @desc    Get single course
 // @route   GET /api/courses/:id
 // @access  Public
-exports.getCourse = async (req, res) => {
+export const getCourse = async (req, res) => {
     try {
         const course = await Course.findById(req.params.id)
             .populate('teacher', 'name email')
@@ -121,7 +121,7 @@ exports.getCourse = async (req, res) => {
 // @desc    Create course
 // @route   POST /api/courses
 // @access  Private/Teacher
-exports.createCourse = async (req, res) => {
+export const createCourse = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -149,7 +149,7 @@ exports.createCourse = async (req, res) => {
 // @desc    Update course
 // @route   PUT /api/courses/:id
 // @access  Private
-exports.updateCourse = async (req, res) => {
+export const updateCourse = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -200,7 +200,7 @@ exports.updateCourse = async (req, res) => {
 // @desc    Delete course
 // @route   DELETE /api/courses/:id
 // @access  Private
-exports.deleteCourse = async (req, res) => {
+export const deleteCourse = async (req, res) => {
     try {
         const course = await Course.findById(req.params.id);
 
@@ -243,7 +243,7 @@ exports.deleteCourse = async (req, res) => {
 // @desc    Enroll in course
 // @route   PUT /api/courses/:id/enroll
 // @access  Private
-exports.enrollInCourse = async (req, res) => {
+export const enrollInCourse = async (req, res) => {
     try {
         const course = await Course.findById(req.params.id);
 
@@ -295,7 +295,7 @@ exports.enrollInCourse = async (req, res) => {
 // @desc    Get course students
 // @route   GET /api/courses/:id/students
 // @access  Private
-exports.getCourseStudents = async (req, res) => {
+export const getCourseStudents = async (req, res) => {
     try {
         const course = await Course.findById(req.params.id).populate('students', 'name email');
 

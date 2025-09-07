@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const courseSchema = new mongoose.Schema({
     title: {
@@ -43,4 +43,4 @@ const courseSchema = new mongoose.Schema({
 // Add text index for search functionality
 courseSchema.index({ title: 'text', description: 'text', code: 'text' });
 
-module.exports = mongoose.model('Course', courseSchema);
+export default mongoose.model('Course', courseSchema);

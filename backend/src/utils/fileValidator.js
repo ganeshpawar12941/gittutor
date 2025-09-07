@@ -1,7 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const mime = require('mime-types');
-const { errorResponse } = require('./apiResponse');
+import fs from 'fs';
+import path from 'path';
+import mime from 'mime-types';
+import { errorResponse } from './apiResponse.js';
+
+const __filename = import.meta.url;
+const __dirname = path.dirname(__filename);
 
 // Allowed file types with their MIME types and extensions
 const ALLOWED_FILE_TYPES = {
@@ -230,7 +233,7 @@ const validateMultipleFileUploads = (fieldName, maxCount = 5, isRequired = true)
     };
 };
 
-module.exports = {
+export {
     ALLOWED_FILE_TYPES,
     MAX_FILE_SIZES,
     FILE_CATEGORIES,

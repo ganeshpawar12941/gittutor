@@ -1,13 +1,17 @@
-const Video = require('../models/Video');
-const Course = require('../models/Course');
-const { validationResult } = require('express-validator');
-const path = require('path');
-const fs = require('fs');
+import Video from '../models/Video.js';
+import Course from '../models/Course.js';
+import { validationResult } from 'express-validator';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // @desc    Get all videos
 // @route   GET /api/videos
 // @access  Public
-exports.getVideos = async (req, res) => {
+export const getVideos = async (req, res) => {
     try {
         // Copy req.query
         const reqQuery = { ...req.query };
@@ -90,7 +94,7 @@ exports.getVideos = async (req, res) => {
 // @desc    Get single video
 // @route   GET /api/videos/:id
 // @access  Public
-exports.getVideo = async (req, res) => {
+export const getVideo = async (req, res) => {
     try {
         const video = await Video.findById(req.params.id)
             .populate('course', 'title code')
@@ -129,7 +133,7 @@ exports.getVideo = async (req, res) => {
 // @desc    Upload video
 // @route   POST /api/videos/upload
 // @access  Private/Teacher
-exports.uploadVideo = async (req, res) => {
+export const uploadVideo = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -219,7 +223,7 @@ exports.uploadVideo = async (req, res) => {
 // @desc    Update video
 // @route   PUT /api/videos/:id
 // @access  Private
-exports.updateVideo = async (req, res) => {
+export const updateVideo = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -271,7 +275,7 @@ exports.updateVideo = async (req, res) => {
 // @desc    Delete video
 // @route   DELETE /api/videos/:id
 // @access  Private
-exports.deleteVideo = async (req, res) => {
+export const deleteVideo = async (req, res) => {
     try {
         const video = await Video.findById(req.params.id);
 
@@ -326,7 +330,7 @@ exports.deleteVideo = async (req, res) => {
 // @desc    Get videos by course
 // @route   GET /api/videos/course/:courseId
 // @access  Public
-exports.getVideosByCourse = async (req, res) => {
+export const getVideosByCourse = async (req, res) => {
     try {
         const videos = await Video.find({ course: req.params.courseId })
             .populate('uploadedBy', 'name email')

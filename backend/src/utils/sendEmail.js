@@ -1,5 +1,5 @@
-const nodemailer = require('nodemailer');
-const { promisify } = require('util');
+import nodemailer from 'nodemailer';
+import { promisify } from 'util';
 
 // Create a transporter object using the default SMTP transport
 const transporter = nodemailer.createTransport({
@@ -41,4 +41,4 @@ const sendEmail = async ({ email, subject, message }) => {
     }
 };
 
-module.exports = sendEmail;
+export default sendEmail;

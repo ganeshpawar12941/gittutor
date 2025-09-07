@@ -1,11 +1,11 @@
-const Comment = require('../models/Comment');
-const Video = require('../models/Video');
-const { validationResult } = require('express-validator');
+import Comment from '../models/Comment.js';
+import Video from '../models/Video.js';
+import { validationResult } from 'express-validator';
 
 // @desc    Get comments for a video
 // @route   GET /api/comments/video/:videoId
 // @access  Public
-exports.getComments = async (req, res) => {
+export const getComments = async (req, res) => {
     try {
         const comments = await Comment.find({ video: req.params.videoId })
             .populate('user', 'name email')
@@ -28,7 +28,7 @@ exports.getComments = async (req, res) => {
 // @desc    Add comment to video
 // @route   POST /api/comments
 // @access  Private
-exports.addComment = async (req, res) => {
+export const createComment = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -91,7 +91,7 @@ exports.addComment = async (req, res) => {
 // @desc    Update comment
 // @route   PUT /api/comments/:id
 // @access  Private
-exports.updateComment = async (req, res) => {
+export const updateComment = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -146,7 +146,7 @@ exports.updateComment = async (req, res) => {
 // @desc    Delete comment
 // @route   DELETE /api/comments/:id
 // @access  Private
-exports.deleteComment = async (req, res) => {
+export const deleteComment = async (req, res) => {
     try {
         const comment = await Comment.findById(req.params.id);
 
@@ -189,10 +189,53 @@ exports.deleteComment = async (req, res) => {
     }
 };
 
-// @desc    Add reply to comment
+// @desc    Like a comment
+// @route   PUT /api/comments/:id/like
+// @access  Private
+export const likeComment = async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const comment = await Comment.findById(req.params.id);
+
+        if (!comment) {
+            return res.status(404).json({
+                success: false,
+                message: 'Comment not found'
+            });
+        }
+
+        // Check if user has already liked the comment
+        if (comment.likes.includes(req.user.id)) {
+            return res.status(400).json({
+                success: false,
+                message: 'You have already liked this comment'
+            });
+        }
+
+        comment.likes.push(req.user.id);
+        await comment.save();
+
+        res.status(200).json({
+            success: true,
+            data: comment
+        });
+    } catch (err) {
+        console.error('Like comment error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
+// @desc    Reply to a comment
 // @route   POST /api/comments/:id/reply
 // @access  Private
-exports.addReply = async (req, res) => {
+export const replyToComment = async (req, res) => {
     try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {

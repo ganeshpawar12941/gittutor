@@ -1,5 +1,5 @@
-const mongoose = require('mongoose');
-const { errorResponse } = require('./apiResponse');
+import mongoose from 'mongoose';
+import { errorResponse } from './apiResponse.js';
 
 /**
  * Connect to MongoDB database
@@ -208,7 +208,7 @@ const abortTransaction = async (session, error) => {
     throw error;
 };
 
-module.exports = {
+export {
     connectDB,
     handleDBError,
     paginate,
@@ -218,5 +218,5 @@ module.exports = {
     checkExists,
     startSession,
     commitTransaction,
-    abortTransaction,
+    abortTransaction
 };

@@ -1,8 +1,11 @@
-const fs = require('fs');
-const path = require('path');
-const mime = require('mime-types');
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
-const { errorResponse } = require('./apiResponse');
+import fs from 'fs';
+import path from 'path';
+import mime from 'mime-types';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { errorResponse } from './apiResponse.js';
+
+const __filename = import.meta.url;
+const __dirname = path.dirname(__filename);
 
 // Configure AWS S3 client if needed
 let s3Client;
@@ -21,7 +24,7 @@ if (process.env.STORAGE_PROVIDER === 's3') {
  * @param {string} filePath - Path to the file
  * @param {Object} res - Express response object
  */
-const streamLocalFile = (filePath, res) => {
+export const streamLocalFile = (filePath, res) => {
     try {
         // Check if file exists
         if (!fs.existsSync(filePath)) {
@@ -77,7 +80,7 @@ const streamLocalFile = (filePath, res) => {
  * @param {string} key - S3 object key
  * @param {Object} res - Express response object
  */
-const streamS3File = async (key, res) => {
+export const streamS3File = async (key, res) => {
     try {
         const params = {
             Bucket: process.env.AWS_BUCKET_NAME,
@@ -138,7 +141,7 @@ const streamS3File = async (key, res) => {
  * @param {Object} res - Express response object
  * @param {Object} req - Express request object (optional)
  */
-const streamFile = async (filePath, res, req = {}) => {
+export const streamFile = async (filePath, res, req = {}) => {
     try {
         // Check if using S3 or local storage
         if (process.env.STORAGE_PROVIDER === 's3' && filePath) {
@@ -165,7 +168,7 @@ const streamFile = async (filePath, res, req = {}) => {
  * @param {Object} res - Express response object
  * @param {string} [filename] - Custom filename for download
  */
-const downloadFile = async (filePath, res, filename = null) => {
+export const downloadFile = async (filePath, res, filename = null) => {
     try {
         // Check if using S3 or local storage
         if (process.env.STORAGE_PROVIDER === 's3') {
@@ -217,9 +220,4 @@ const downloadFile = async (filePath, res, filename = null) => {
         console.error('Error downloading file:', error);
         return errorResponse(res, 500, 'Error downloading file');
     }
-};
-
-module.exports = {
-    streamFile,
-    downloadFile
 };

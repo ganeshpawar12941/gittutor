@@ -1,13 +1,17 @@
-const sharp = require('sharp');
-const imagemin = require('imagemin');
-const imageminJpegtran = require('imagemin-jpegtran');
-const imageminPngquant = require('imagemin-pngquant');
-const imageminMozjpeg = require('imagemin-mozjpeg');
-const imageminWebp = require('imagemin-webp');
-const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-const { errorResponse } = require('./apiResponse');
+import sharp from 'sharp';
+import imagemin from 'imagemin';
+import imageminJpegtran from 'imagemin-jpegtran';
+import imageminPngquant from 'imagemin-pngquant';
+import imageminMozjpeg from 'imagemin-mozjpeg';
+import imageminWebp from 'imagemin-webp';
+import fs from 'fs';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import { errorResponse } from './apiResponse.js';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Optimize an image file
@@ -231,7 +235,7 @@ const generateThumbnail = async (filePath, options = {}) => {
     }
 };
 
-module.exports = {
+export {
     optimizeImage,
     compressPdf,
     optimizeVideo,

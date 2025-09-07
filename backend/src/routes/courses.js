@@ -1,7 +1,7 @@
-const express = require('express');
-const { check } = require('express-validator');
-const { protect, authorize } = require('../middleware/auth');
-const {
+import express from 'express';
+import { check } from 'express-validator';
+import { protect, authorize } from '../middleware/auth.js';
+import {
     getCourses,
     getCourse,
     createCourse,
@@ -9,7 +9,7 @@ const {
     deleteCourse,
     enrollInCourse,
     getCourseStudents
-} = require('../controllers/courseController');
+} from '../controllers/courseController.js';
 
 const router = express.Router();
 

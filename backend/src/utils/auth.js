@@ -1,9 +1,9 @@
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const { promisify } = require('util');
-const User = require('../models/User');
-const { errorResponse } = require('./apiResponse');
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { promisify } from 'util';
+import User from '../models/User.js';
+import { errorResponse } from './apiResponse.js';
 
 // Promisify bcrypt functions
 const genSalt = promisify(bcrypt.genSalt);
@@ -159,7 +159,7 @@ const generateEmailVerificationToken = () => {
     };
 };
 
-module.exports = {
+export {
     generateToken,
     verifyToken,
     hashPassword,

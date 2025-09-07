@@ -1,9 +1,14 @@
-const path = require('path');
-const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
-const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const { errorResponse } = require('./apiResponse');
+import AWS from 'aws-sdk';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { errorResponse } from './apiResponse.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Configure AWS S3 client
 const s3Client = new S3Client({
@@ -175,7 +180,7 @@ const getFileUrl = (filePath, req) => {
     return `${baseUrl}${filePath}`;
 };
 
-module.exports = {
+export {
     uploadFile,
     deleteFile,
     getFileUrl,

@@ -13,6 +13,25 @@ const userSchema = new mongoose.Schema({
         unique: true,
         lowercase: true,
         trim: true,
+        validate: {
+            validator: function(v) {
+                // Check if the user is a student or teacher/admin
+                if (this.role === 'student') {
+                    return /^[^\s@]+@students\.git\.edu$/i.test(v);
+                } else if (this.role === 'teacher' || this.role === 'admin') {
+                    return /^[^\s@]+@git\.edu$/i.test(v);
+                }
+                return true; // Allow other roles (if any) without email validation
+            },
+            message: function(props) {
+                if (this.role === 'student') {
+                    return 'Please enter your college email';
+                } else if (this.role === 'teacher' || this.role === 'admin') {
+                    return 'Please enter your college email';
+                }
+                return 'Please provide a valid college email ';
+            }
+        },
         match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email']
     },
     password: {

@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import { validationResult } from 'express-validator';
 import crypto from 'crypto';
 import sendEmail from '../utils/sendEmail.js';
+import TeacherEmail from '../models/TeacherEmail.js';
 
 // Generate token
 const generateToken = (id) => {
@@ -10,6 +11,8 @@ const generateToken = (id) => {
         expiresIn: '30d'
     });
 };
+
+import { isValidTeacherSignupCode, removeTeacherSignupCode } from '../utils/teacherSignupCode.js';
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -21,7 +24,8 @@ export const register = async (req, res) => {
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const { name, email, password, role } = req.body;
+        const { name, email, password } = req.body;
+        const isTeacherSignup = req.originalUrl.includes('/register/teacher');
 
         // Check if user exists
         let user = await User.findOne({ email });
@@ -32,12 +36,27 @@ export const register = async (req, res) => {
             });
         }
 
+        // Check if email is allowed for teacher registration
+        if (isTeacherSignup) {
+            const teacherEmail = await TeacherEmail.findOne({ 
+                email: email.toLowerCase(),
+                isVerified: true
+            });
+
+            if (!teacherEmail) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'This email is not authorized for teacher access. Please request teacher access first.'
+                });
+            }
+        }
+
         // Create user
-        user = await User.create({
+        user = new User({
             name,
             email,
             password,
-            role: role || 'student' // Default role is student if not provided
+            role: isTeacherSignup ? 'teacher' : 'student'
         });
 
         // Generate verification token

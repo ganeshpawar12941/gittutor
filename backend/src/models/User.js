@@ -40,6 +40,11 @@ const userSchema = new mongoose.Schema({
         minlength: 6,
         select: false
     },
+    // Teacher signup code (required for teacher registration)
+    teacherSignupCode: {
+        type: String,
+        select: false
+    },
     role: {
         type: String,
         enum: ['student', 'teacher', 'admin'],

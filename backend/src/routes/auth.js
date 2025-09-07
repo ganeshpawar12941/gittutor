@@ -12,12 +12,25 @@ import {
 const router = express.Router();
 
 // Public routes
+// Student registration (default)
 router.post(
     '/register',
     [
         check('name', 'Name is required').not().isEmpty(),
         check('email', 'Please include a valid email').isEmail(),
         check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 })
+    ],
+    register
+);
+
+// Teacher registration (requires signup code)
+router.post(
+    '/register/teacher',
+    [
+        check('name', 'Name is required').not().isEmpty(),
+        check('email', 'Please include a valid email').isEmail(),
+        check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }),
+        check('teacherSignupCode', 'Valid teacher signup code is required').not().isEmpty()
     ],
     register
 );

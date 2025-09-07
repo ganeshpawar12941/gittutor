@@ -49,4 +49,4 @@ router
 router.post('/enroll/:courseId', authorize('student'), enrollInCourse);
 router.get('/my-courses', authorize('student'), getEnrolledCourses);
 
-module.exports = router;
+export default router;

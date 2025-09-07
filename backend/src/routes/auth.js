@@ -52,4 +52,4 @@ router.use(protect);
 
 router.get('/me', getMe);
 
-module.exports = router;
+export default router;

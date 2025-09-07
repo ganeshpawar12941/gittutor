@@ -74,4 +74,4 @@ router.put(
     voteAnswer
 );
 
-module.exports = router;
+export default router;

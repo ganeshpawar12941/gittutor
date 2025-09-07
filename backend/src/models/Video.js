@@ -53,4 +53,6 @@ const videoSchema = new mongoose.Schema({
 // Add text index for search functionality
 videoSchema.index({ title: 'text', description: 'text', tags: 'text' });
 
-module.exports = mongoose.model('Video', videoSchema);
+const Video = mongoose.model('Video', videoSchema);
+
+export default Video;

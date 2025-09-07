@@ -90,4 +90,4 @@ router
     )
     .delete(authorize('teacher', 'admin'), deleteVideo);
 
-module.exports = router;
+export default router;

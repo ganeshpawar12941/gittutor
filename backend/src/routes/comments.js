@@ -3,10 +3,10 @@ import { check } from 'express-validator';
 import { protect } from '../middleware/auth.js';
 import {
     getComments,
-    addComment,
+    createComment as addComment,
     updateComment,
     deleteComment,
-    addReply
+    replyToComment as addReply
 } from '../controllers/commentController.js';
 
 const router = express.Router();
@@ -45,4 +45,4 @@ router.post(
     addReply
 );
 
-module.exports = router;
+export default router;

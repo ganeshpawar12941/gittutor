@@ -51,4 +51,4 @@ router.post('/:id/enroll', authorize('student'), enrollInCourse);
 // Teacher and admin routes
 router.get('/:id/students', authorize('teacher', 'admin'), getCourseStudents);
 
-module.exports = router;
+export default router;

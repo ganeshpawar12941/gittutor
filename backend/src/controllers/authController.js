@@ -5,14 +5,6 @@ import crypto from 'crypto';
 import sendEmail from '../utils/sendEmail.js';
 import TeacherEmail from '../models/TeacherEmail.js';
 
-// Generate token
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: '30d'
-    });
-};
-
-import { isValidTeacherSignupCode, removeTeacherSignupCode } from '../utils/teacherSignupCode.js';
 
 // @desc    Register user
 // @route   POST /api/auth/register

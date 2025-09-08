@@ -25,13 +25,13 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/courses', courseRoutes);
-app.use('/api/videos', videoRoutes);
-app.use('/api/comments', commentRoutes);
-app.use('/api/doubts', doubtRoutes);
-app.use('/api/teachers', teacherRoutes);
+app.use('/api/v2/auth', authRoutes);
+app.use('/api/v2/users', userRoutes);
+app.use('/api/v2/courses', courseRoutes);
+app.use('/api/v2/videos', videoRoutes);
+app.use('/api/v2/comments', commentRoutes);
+app.use('/api/v2/doubts', doubtRoutes);
+app.use('/api/v2/teachers', teacherRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

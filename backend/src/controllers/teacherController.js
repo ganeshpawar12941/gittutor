@@ -2,6 +2,7 @@ import TeacherEmail from '../models/TeacherEmail.js';
 import User from '../models/User.js';
 import crypto from 'crypto';
 import sendEmail from '../utils/sendEmail.js';
+import XLSX from 'xlsx';
 
 // @desc    Upload teacher emails
 // @route   POST /api/teachers/upload
@@ -17,41 +18,84 @@ export const uploadTeacherEmails = async (req, res) => {
         }
 
         if (!req.file) {
-            return res.status(400).json({ success: false, message: 'Please upload a CSV file' });
+            return res.status(400).json({ success: false, message: 'Please upload a file' });
         }
 
-        // Parse CSV file
-        const emails = req.file.buffer
-            .toString()
-            .split('\n')
-            .map(email => email.trim().toLowerCase())
-            .filter(email => email.match(/^[^\s@]+@git\.edu$/i));
+        let emails = [];
+        const fileBuffer = req.file.buffer;
+        const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
+
+        if (fileExtension === 'csv') {
+            // Parse CSV file
+            emails = fileBuffer
+                .toString()
+                .split('\n')
+                .map(email => email.trim().toLowerCase())
+                .filter(email => email.match(/^[^\s@]+@git\.edu$/i));
+        } else if (['xls', 'xlsx'].includes(fileExtension)) {
+            // Parse Excel file
+            try {
+                const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+                
+                // Assuming first column contains emails
+                emails = data
+                    .flat()
+                    .map(email => email.toString().trim().toLowerCase())
+                    .filter(email => email.match(/^[^\s@]+@git\.edu$/i));
+            } catch (error) {
+                console.error('Error parsing Excel file:', error);
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Error parsing Excel file. Please ensure it is a valid Excel file.' 
+                });
+            }
+        } else {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid file type. Only CSV and Excel files are allowed.' 
+            });
+        }
 
         // Create or update teacher emails
-        const results = await Promise.all(
-            emails.map(async (email) => {
-                try {
-                    const existing = await TeacherEmail.findOne({ email });
-                    if (existing) return { email, status: 'exists' };
-                    
-                    const verificationToken = crypto.randomBytes(20).toString('hex');
-                    await TeacherEmail.create({
-                        email,
-                        verificationToken,
-                        verificationExpire: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-                        addedBy: req.user.id
-                    });
-                    return { email, status: 'added' };
-                } catch (error) {
-                    return { email, status: 'error', error: error.message };
+        const results = [];
+        
+        for (const email of emails) {
+            try {
+                // Check if email already exists
+                const existing = await TeacherEmail.findOne({ email });
+                if (existing) {
+                    results.push({ email, status: 'exists' });
+                    continue;
                 }
-            })
-        );
+                
+                // Create new teacher email with verification code
+                const teacherEmail = new TeacherEmail({
+                    email,
+                    addedBy: req.user.id
+                });
+                
+                // Generate and set verification code
+                teacherEmail.generateVerificationCode();
+                
+                // Save the document
+                await teacherEmail.save();
+                results.push({ email, status: 'added' });
+            } catch (error) {
+                console.error(`Error processing email ${email}:`, error);
+                results.push({ 
+                    email, 
+                    status: 'error', 
+                    error: error.message 
+                });
+            }
+        }
 
         res.status(200).json({
             success: true,
             results,
-            message: 'Teacher emails processed successfully'
+            message: `Successfully processed ${emails.length} teacher emails`
         });
     } catch (error) {
         console.error('Error uploading teacher emails:', error);
@@ -59,7 +103,7 @@ export const uploadTeacherEmails = async (req, res) => {
     }
 };
 
-// @desc    Request teacher verification
+// @desc    Request teacher verification code
 // @route   POST /api/teachers/request-verification
 // @access  Public
 export const requestTeacherVerification = async (req, res) => {
@@ -68,42 +112,48 @@ export const requestTeacherVerification = async (req, res) => {
 
         // Check if email exists in teacher emails
         const teacherEmail = await TeacherEmail.findOne({ 
-            email: email.toLowerCase(),
-            isVerified: false
+            email: email.toLowerCase()
         });
 
         if (!teacherEmail) {
             return res.status(400).json({
                 success: false,
-                message: 'This email is not authorized for teacher access'
+                message: 'This email is not authorized for teacher access. Please contact the administrator.'
             });
         }
 
-        // Generate verification token
-        const verificationToken = crypto.randomBytes(20).toString('hex');
-        teacherEmail.verificationToken = verificationToken;
-        teacherEmail.verificationExpire = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+        // Check if email is already verified and used
+        if (teacherEmail.isUsed) {
+            return res.status(400).json({
+                success: false,
+                message: 'This email has already been used for teacher registration.'
+            });
+        }
+
+        // Generate and save verification code
+        const verificationCode = teacherEmail.generateVerificationCode();
         await teacherEmail.save();
 
-        // Send verification email
-        const verificationUrl = `${process.env.FRONTEND_URL}/verify-teacher?token=${verificationToken}`;
-        
+        // Log the verification code for debugging
+        console.log(`Verification code for ${teacherEmail.email}: ${verificationCode}`);
+
+        // Send verification email with code
         try {
             await sendEmail({
                 email: teacherEmail.email,
-                subject: 'Verify Your Teacher Account',
-                message: `Please click the following link to verify your teacher account: ${verificationUrl}`
+                subject: 'Your Teacher Verification Code',
+                message: `Your verification code is: ${verificationCode}\n\nThis code will expire in 24 hours.`
             });
 
             res.status(200).json({
                 success: true,
-                message: 'Verification email sent. Please check your email.'
+                message: 'Verification code sent. Please check your email.'
             });
         } catch (error) {
-            console.error('Error sending email:', error);
-            return res.status(500).json({
+            console.error('Error sending verification email:', error);
+            res.status(500).json({
                 success: false,
-                message: 'Error sending verification email'
+                message: 'Error sending verification code. Please try again.'
             });
         }
     } catch (error) {
@@ -112,43 +162,37 @@ export const requestTeacherVerification = async (req, res) => {
     }
 };
 
-// @desc    Verify teacher email
-// @route   GET /api/teachers/verify/:token
+// @desc    Verify teacher with one-time code
+// @route   POST /api/teachers/verify
 // @access  Public
 export const verifyTeacher = async (req, res) => {
     try {
-        const { token } = req.params;
+        const { email, code } = req.body;
 
-        // Find teacher email by token
+        // Find teacher email by email and code
         const teacherEmail = await TeacherEmail.findOne({
-            verificationToken: token,
-            verificationExpire: { $gt: Date.now() }
+            email: email.toLowerCase(),
+            verificationCode: code,
+            verificationExpires: { $gt: Date.now() },
+            isUsed: false
         });
 
         if (!teacherEmail) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid or expired verification token'
+                message: 'Invalid or expired verification code'
             });
         }
 
-        // Update teacher email as verified
+        // Mark as verified but not used yet
         teacherEmail.isVerified = true;
         teacherEmail.verifiedAt = Date.now();
-        teacherEmail.verificationToken = undefined;
-        teacherEmail.verificationExpire = undefined;
+        teacherEmail.verificationCode = undefined;
         await teacherEmail.save();
-
-        // Update user role if exists
-        await User.findOneAndUpdate(
-            { email: teacherEmail.email },
-            { $set: { role: 'teacher' } },
-            { new: true }
-        );
 
         res.status(200).json({
             success: true,
-            message: 'Email verified successfully. You can now log in as a teacher.'
+            message: 'Email verified successfully. You can now complete your teacher registration.'
         });
     } catch (error) {
         console.error('Error verifying teacher email:', error);

@@ -19,13 +19,44 @@ const upload = multer({
         fileSize: 5 * 1024 * 1024, // 5MB max file size
     },
     fileFilter: (req, file, cb) => {
-        if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+        const allowedMimeTypes = [
+            'text/csv',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ];
+        const allowedExtensions = ['.csv', '.xls', '.xlsx'];
+        
+        const isAllowedMimeType = allowedMimeTypes.includes(file.mimetype);
+        const hasAllowedExtension = allowedExtensions.some(ext => 
+            file.originalname.toLowerCase().endsWith(ext)
+        );
+        
+        if (isAllowedMimeType || hasAllowedExtension) {
             cb(null, true);
         } else {
-            cb(new Error('Only CSV files are allowed'), false);
+            cb(new Error('Only CSV and Excel files are allowed'), false);
         }
     }
 });
+
+// Public routes for teacher verification
+router.route('/request-verification')
+    .post(
+        [
+            check('email', 'Please include a valid email').isEmail(),
+            check('email', 'Teacher email must end with @git.edu').matches(/@git\.edu$/i)
+        ],
+        requestTeacherVerification
+    );
+
+router.route('/verify')
+    .post(
+        [
+            check('email', 'Please include a valid email').isEmail(),
+            check('code', 'Verification code is required').not().isEmpty()
+        ],
+        verifyTeacher
+    );
 
 // Admin routes
 router.route('/emails')
@@ -47,12 +78,5 @@ router.route('/upload')
         upload.single('file'),
         uploadTeacherEmails
     );
-
-// Public routes
-router.route('/request-verification')
-    .post(requestTeacherVerification);
-
-router.route('/verify/:token')
-    .get(verifyTeacher);
 
 export default router;

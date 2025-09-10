@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 
 const userSchema = new mongoose.Schema({
     name: {
@@ -16,24 +17,30 @@ const userSchema = new mongoose.Schema({
         trim: true,
         validate: {
             validator: function(v) {
-                // Check if the user is a student or teacher/admin
+                // Always return true for admin role (skip validation)
+                if (this.role === 'admin') return true;
+                
+                // For new documents, we'll validate in the controller
+                if (this.isNew) return true;
+                
+                // For existing documents, validate based on role
                 if (this.role === 'student') {
                     return /^[^\s@]+@students\.git\.edu$/i.test(v);
-                } else if (this.role === 'teacher' || this.role === 'admin') {
+                } else if (this.role === 'teacher') {
                     return /^[^\s@]+@git\.edu$/i.test(v);
                 }
-                return true; // Allow other roles (if any) without email validation
+                return true;
             },
             message: function(props) {
                 if (this.role === 'student') {
-                    return 'Please enter your college email';
-                } else if (this.role === 'teacher' || this.role === 'admin') {
-                    return 'Please enter your college email';
+                    return 'Student registration requires a @students.git.edu email address';
+                } else if (this.role === 'teacher') {
+                    return 'Teacher registration requires a @git.edu email address';
                 }
-                return 'Please provide a valid college email ';
+                return 'Please provide a valid email address';
             }
         },
-        match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email']
+        match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email address']
     },
     password: {
         type: String,
@@ -79,6 +86,15 @@ userSchema.pre('save', async function(next) {
 // Method to compare passwords
 userSchema.methods.comparePassword = async function(candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// Generate JWT token
+userSchema.methods.getSignedJwtToken = function() {
+    return jwt.sign(
+        { id: this._id, role: this.role },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRE || '30d' }
+    );
 };
 
 // Generate and hash email verification token

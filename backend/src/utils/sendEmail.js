@@ -25,6 +25,17 @@ const sendMailAsync = promisify(transporter.sendMail).bind(transporter);
  */
 const sendEmail = async ({ email, subject, message }) => {
     try {
+        // In development, log the email instead of sending
+        if (process.env.NODE_ENV === 'development') {
+            console.log('\n===== EMAIL NOT SENT (Development Mode) =====');
+            console.log('To:', email);
+            console.log('Subject:', subject);
+            console.log('Message:', message);
+            console.log('======================================\n');
+            return true;
+        }
+
+        // In production, send the actual email
         const mailOptions = {
             from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
             to: email,

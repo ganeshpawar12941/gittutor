@@ -24,6 +24,15 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
+// Test route for environment variables
+app.get('/api/v2/test-env', (req, res) => {
+    res.json({
+        ADMIN_SIGNUP_KEY: process.env.ADMIN_SIGNUP_KEY || 'Not set',
+        NODE_ENV: process.env.NODE_ENV,
+        allEnv: process.env
+    });
+});
+
 // Routes
 app.use('/api/v2/auth', authRoutes);
 app.use('/api/v2/users', userRoutes);

@@ -348,3 +348,4 @@ export const verifyEmail = async (req, res, next) => {
         return next(new ErrorResponse('Email verification failed', 500));
     }
 };
+

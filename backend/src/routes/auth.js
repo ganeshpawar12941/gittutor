@@ -6,7 +6,8 @@ import {
     login,
     getMe,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    verifyEmail
 } from '../controllers/authController.js';
 
 const router = express.Router();
@@ -23,14 +24,25 @@ router.post(
     register
 );
 
-// Teacher registration (requires signup code)
+// Teacher registration (requires email verification)
 router.post(
     '/register/teacher',
     [
         check('name', 'Name is required').not().isEmpty(),
         check('email', 'Please include a valid email').isEmail(),
-        check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }),
-        check('teacherSignupCode', 'Valid teacher signup code is required').not().isEmpty()
+        check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 })
+    ],
+    register
+);
+
+// Admin registration (requires admin key in request body)
+router.post(
+    '/register/admin',
+    [
+        check('name', 'Name is required').not().isEmpty(),
+        check('email', 'Please include a valid email').isEmail(),
+        check('password', 'Please enter a password with 8 or more characters').isLength({ min: 8 }),
+        check('adminKey', 'Admin key is required').not().isEmpty()
     ],
     register
 );
@@ -63,6 +75,9 @@ router.put(
 // Protected routes
 router.use(protect);
 
-router.get('/me', getMe);
+router.get('/me', protect, getMe);
+
+// Email verification route
+router.get('/verify-email/:verificationToken', verifyEmail);
 
 export default router;

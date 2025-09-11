@@ -23,22 +23,26 @@ export const register = async (req, res) => {
 
         // Skip domain validation for admin
         if (!isAdminRegistration) {
-            const emailParts = email.split('@');
-            if (emailParts.length !== 2) {
+            // Basic email format validation
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Please provide a valid email address.'
                 });
             }
 
-            const emailDomain = emailParts[1].toLowerCase();
-            const expectedDomain = isTeacherSignup ? 'git.edu' : 'students.git.edu';
+            // If it's a student registration, enforce students.git.edu domain
+            if (!isTeacherSignup) {
+                const emailParts = email.split('@');
+                const emailDomain = emailParts[1].toLowerCase();
+                const expectedDomain = 'students.git.edu';
 
-            if (emailDomain !== expectedDomain) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Registration requires a @${expectedDomain} email address.`
-                });
+                if (emailDomain !== expectedDomain) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Student registration requires a @${expectedDomain} email address.`
+                    });
+                }
             }
         }
 
@@ -51,12 +55,10 @@ export const register = async (req, res) => {
             });
         }
 
-        // Check if teacher email is verified
-        let teacherEmail;
+        // Check if teacher email is authorized
         if (isTeacherSignup) {
-            teacherEmail = await TeacherEmail.findOne({
+            const teacherEmail = await TeacherEmail.findOne({
                 email: email.toLowerCase(),
-                isVerified: true,
                 isUsed: false
             });
 
@@ -68,6 +70,22 @@ export const register = async (req, res) => {
             }
         }
 
+        // Check if teacher email exists and is available
+        let teacherEmailDoc = null;
+        if (isTeacherSignup) {
+            teacherEmailDoc = await TeacherEmail.findOne({
+                email: email.toLowerCase(),
+                isUsed: false
+            });
+
+            if (!teacherEmailDoc) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Teacher email not found or already in use.'
+                });
+            }
+        }
+
         // Create user with correct role
         const userRole = isAdminRegistration ? 'admin' : (isTeacherSignup ? 'teacher' : 'student');
         
@@ -75,32 +93,73 @@ export const register = async (req, res) => {
             name,
             email: email.toLowerCase(),
             password,
-            role: userRole
+            role: userRole,
+            isEmailVerified: isAdminRegistration || !isTeacherSignup, // Auto-verify admin and student accounts
+            emailVerificationToken: isTeacherSignup ? crypto.randomBytes(32).toString('hex') : undefined,
+            emailVerificationExpire: isTeacherSignup ? Date.now() + 10 * 60 * 1000 : undefined, // 10 minutes
+            teacherEmailId: isTeacherSignup ? teacherEmailDoc._id : undefined // Store reference to teacher email
         });
-
-        // Mark teacher email as used after successful user creation
-        if (isTeacherSignup && teacherEmail) {
-            teacherEmail.isUsed = true;
-            await teacherEmail.save();
-        }
 
         // Teacher requires email verification
         if (isTeacherSignup) {
             const verificationToken = user.getEmailVerificationToken();
             await user.save({ validateBeforeSave: false });
 
-            const verificationUrl = `${req.protocol}://${req.get('host')}/api/auth/verify-email/${verificationToken}`;
+            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const verificationUrl = `${baseUrl}/api/auth/verify-email/${verificationToken}`;
 
-            await sendEmail({
-                email: user.email,
-                subject: 'Email Verification',
-                message: `Please verify your email by clicking on the following link: ${verificationUrl}`
-            });
+            const emailMessage = `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #4a6fdc;">Welcome to GitTutor!</h2>
+                    <p>Thank you for registering as a teacher. Here's your verification token for Postman testing:</p>
+                    
+                    <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                        <p><strong>Verification Token:</strong></p>
+                        <p style="word-break: break-all; background: white; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">${verificationToken}</p>
+                        
+                        <p><strong>Full Verification URL (for Postman):</strong></p>
+                        <p style="word-break: break-all; background: white; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">${verificationUrl}</p>
+                        
+                        <p><strong>To verify in Postman:</strong></p>
+                        <ol>
+                            <li>Open Postman</li>
+                            <li>Create a new GET request</li>
+                            <li>Enter the URL above</li>
+                            <li>Send the request</li>
+                        </ol>
+                    </div>
+                    
+                    <p>This link will expire in 10 minutes.</p>
+                    <p>If you didn't create an account, you can safely ignore this email.</p>
+                    <p>Best regards,<br>The GitTutor Team</p>
+                </div>
+            `;
 
-            return res.status(201).json({
-                success: true,
-                message: 'Registration successful! Please check your email to verify your account.'
-            });
+            try {
+                await sendEmail({
+                    email: user.email,
+                    subject: 'Verify Your GitTutor Account',
+                    message: emailMessage
+                });
+
+                return res.status(201).json({
+                    success: true,
+                    token: user.getSignedJwtToken(),
+                    verificationToken: verificationToken, // Include token in response for testing
+                    verificationUrl: verificationUrl,     // Include full URL in response for testing
+                    message: 'Registration successful! Please check your email to verify your account.'
+                });
+            } catch (emailError) {
+                console.error('Email sending failed:', emailError);
+                // Still return success but include verification token in the response
+                return res.status(201).json({
+                    success: true,
+                    token: user.getSignedJwtToken(),
+                    verificationToken: verificationToken,
+                    verificationUrl: verificationUrl,
+                    message: 'Registration successful! However, we encountered an issue sending the verification email. Please use the verification token provided to verify your account.'
+                });
+            }
         } else {
             // Admins + Students don't need verification
             return res.status(201).json({
@@ -143,7 +202,7 @@ export const login = async (req, res) => {
         }
 
         // Check if password matches
-        const isMatch = await user.matchPassword(password);
+        const isMatch = await user.comparePassword(password);
 
         if (!isMatch) {
             return res.status(401).json({
@@ -154,9 +213,17 @@ export const login = async (req, res) => {
 
         // Check if email is verified (for teachers)
         if (user.role === 'teacher' && !user.isEmailVerified) {
+            // Generate a new verification token if needed
+            const verificationToken = user.getEmailVerificationToken();
+            await user.save({ validateBeforeSave: false });
+            
+            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const verificationUrl = `${baseUrl}/api/auth/verify-email/${verificationToken}`;
+            
             return res.status(401).json({
                 success: false,
-                message: 'Please verify your email before logging in'
+                message: 'Please verify your email before logging in',
+                verificationUrl: verificationUrl
             });
         }
 
@@ -307,44 +374,106 @@ export const resetPassword = async (req, res) => {
 // @access  Public
 export const verifyEmail = async (req, res, next) => {
     try {
+        console.log('Verification request received for token:', req.params.verificationToken);
+        
+        if (!req.params.verificationToken) {
+            console.log('No verification token provided');
+            return res.status(400).json({
+                success: false,
+                message: 'Verification token is required'
+            });
+        }
+
         // Get hashed token
         const verificationToken = crypto
             .createHash('sha256')
             .update(req.params.verificationToken)
             .digest('hex');
 
+        console.log('Looking for user with token hash:', verificationToken);
+
         const user = await User.findOne({
             emailVerificationToken: verificationToken,
             emailVerificationExpire: { $gt: Date.now() }
-        });
+        }).select('+emailVerificationToken +emailVerificationExpire');
 
         if (!user) {
-            return next(new ErrorResponse('Invalid or expired verification token', 400));
+            console.log('No user found with the provided token or token expired');
+            // Check if token exists but is expired
+            const expiredUser = await User.findOne({
+                emailVerificationToken: verificationToken
+            });
+
+            if (expiredUser) {
+                console.log('Token found but expired at:', expiredUser.emailVerificationExpire);
+                return res.status(400).json({
+                    success: false,
+                    code: 'TOKEN_EXPIRED',
+                    message: 'Verification token has expired. Please request a new verification email.'
+                });
+            }
+
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_TOKEN',
+                message: 'Invalid verification token'
+            });
         }
 
-        // Update user
+        console.log(`Verifying email for user: ${user.email}`);
+
+        // Update user verification status
         user.isEmailVerified = true;
         user.emailVerificationToken = undefined;
         user.emailVerificationExpire = undefined;
-        await user.save();
+        
+        try {
+            // If this is a teacher, mark their email as used
+            if (user.role === 'teacher' && user.teacherEmailId) {
+                await TeacherEmail.findByIdAndUpdate(user.teacherEmailId, {
+                    isUsed: true,
+                    usedAt: new Date()
+                });
+                console.log(`Marked teacher email as used for user: ${user.email}`);
+            }
+            
+            await user.save({ validateBeforeSave: false });
+            console.log(`Email verified successfully for user: ${user.email}`);
+            
+        } catch (saveError) {
+            console.error('Error during verification process:', saveError);
+            throw new Error('Failed to complete verification process');
+        }
 
-        // Create token for automatic login
+        // Generate JWT token for automatic login
         const token = user.getSignedJwtToken();
+        
+        const userResponse = {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            isEmailVerified: user.isEmailVerified
+        };
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             token,
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                isEmailVerified: user.isEmailVerified
-            },
-            message: 'Email verified successfully. You are now logged in.'
+            user: userResponse,
+            message: 'Email verified successfully! You can now log in with your credentials.'
         });
     } catch (err) {
-        console.error('Email verification error:', err);
-        return next(new ErrorResponse('Email verification failed', 500));
+        console.error('Email verification error:', {
+            error: err.message,
+            stack: err.stack,
+            token: req.params.verificationToken,
+            timestamp: new Date().toISOString()
+        });
+        
+        return res.status(500).json({
+            success: false,
+            code: 'SERVER_ERROR',
+            message: 'An error occurred while verifying your email. Please try again later.'
+        });
     }
 };

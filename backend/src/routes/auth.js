@@ -72,12 +72,11 @@ router.put(
     resetPassword
 );
 
+// Email verification route (public)
+router.get('/verify-email/:verificationToken', verifyEmail);
+
 // Protected routes
 router.use(protect);
-
-router.get('/me', protect, getMe);
-
-// Email verification route
-router.get('/verify-email/:verificationToken', verifyEmail);
+router.get('/me', getMe);
 
 export default router;

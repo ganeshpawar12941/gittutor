@@ -4,8 +4,6 @@ import { check } from 'express-validator';
 import { protect, authorize } from '../middleware/auth.js';
 import {
     uploadTeacherEmails,
-    requestTeacherVerification,
-    verifyTeacher,
     getTeacherEmails,
     addTeacherEmail
 } from '../controllers/teacherController.js';
@@ -38,25 +36,6 @@ const upload = multer({
         }
     }
 });
-
-// Public routes for teacher verification
-router.route('/request-verification')
-    .post(
-        [
-            check('email', 'Please include a valid email').isEmail(),
-            check('email', 'Teacher email must end with @git.edu').matches(/@git\.edu$/i)
-        ],
-        requestTeacherVerification
-    );
-
-router.route('/verify')
-    .post(
-        [
-            check('email', 'Please include a valid email').isEmail(),
-            check('code', 'Verification code is required').not().isEmpty()
-        ],
-        verifyTeacher
-    );
 
 // Admin routes
 router.route('/emails')

@@ -27,15 +27,14 @@ const userSchema = new mongoose.Schema({
                 if (this.role === 'student') {
                     return /^[^\s@]+@students\.git\.edu$/i.test(v);
                 } else if (this.role === 'teacher') {
-                    return /^[^\s@]+@git\.edu$/i.test(v);
+                    // Allow any valid email domain for teachers
+                    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
                 }
                 return true;
             },
             message: function(props) {
                 if (this.role === 'student') {
                     return 'Student registration requires a @students.git.edu email address';
-                } else if (this.role === 'teacher') {
-                    return 'Teacher registration requires a @git.edu email address';
                 }
                 return 'Please provide a valid email address';
             }

@@ -1,7 +1,4 @@
 import TeacherEmail from '../models/TeacherEmail.js';
-import User from '../models/User.js';
-import crypto from 'crypto';
-import sendEmail from '../utils/sendEmail.js';
 import XLSX from 'xlsx';
 
 // @desc    Upload teacher emails
@@ -25,13 +22,38 @@ export const uploadTeacherEmails = async (req, res) => {
         const fileBuffer = req.file.buffer;
         const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
 
+        const processEmail = (input) => {
+            try {
+                // Skip empty lines
+                if (!input || typeof input !== 'string' || input.trim() === '') return null;
+                
+                let email = input.trim().toLowerCase();
+                
+                // If it's just a username, add the default domain
+                if (!email.includes('@') && email.length > 0) {
+                    email = `${email}@git.edu`;
+                }
+                
+                // Basic email format validation
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    console.log(`Invalid email format: ${email}`);
+                    return null;
+                }
+                
+                return email;
+            } catch (error) {
+                console.error(`Error processing email input: ${input}`, error);
+                return null;
+            }
+        };
+
         if (fileExtension === 'csv') {
             // Parse CSV file
             emails = fileBuffer
                 .toString()
                 .split('\n')
-                .map(email => email.trim().toLowerCase())
-                .filter(email => email.match(/^[^\s@]+@git\.edu$/i));
+                .map(processEmail)
+                .filter(Boolean);
         } else if (['xls', 'xlsx'].includes(fileExtension)) {
             // Parse Excel file
             try {
@@ -39,11 +61,12 @@ export const uploadTeacherEmails = async (req, res) => {
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                 const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
                 
-                // Assuming first column contains emails
+                // Process all non-empty cells in the sheet
                 emails = data
                     .flat()
-                    .map(email => email.toString().trim().toLowerCase())
-                    .filter(email => email.match(/^[^\s@]+@git\.edu$/i));
+                    .map(cell => cell.toString())
+                    .map(processEmail)
+                    .filter(Boolean);
             } catch (error) {
                 console.error('Error parsing Excel file:', error);
                 return res.status(400).json({ 
@@ -60,28 +83,31 @@ export const uploadTeacherEmails = async (req, res) => {
 
         // Create or update teacher emails
         const results = [];
-        
+
         for (const email of emails) {
             try {
+                const processedEmail = processEmail(email);
+                if (!processedEmail) {
+                    results.push({ email, status: 'error', error: 'Invalid email format' });
+                    continue;
+                }
+
                 // Check if email already exists
-                const existing = await TeacherEmail.findOne({ email });
+                const existing = await TeacherEmail.findOne({ email: processedEmail });
                 if (existing) {
-                    results.push({ email, status: 'exists' });
+                    results.push({ email: processedEmail, status: 'exists' });
                     continue;
                 }
                 
-                // Create new teacher email with verification code
+                // Create new teacher email
                 const teacherEmail = new TeacherEmail({
-                    email,
-                    addedBy: req.user.id
+                    email: processedEmail,
+                    addedBy: req.user.id,
+                    isVerified: true  // Mark as verified since admin is adding
                 });
                 
-                // Generate and set verification code
-                teacherEmail.generateVerificationCode();
-                
-                // Save the document
                 await teacherEmail.save();
-                results.push({ email, status: 'added' });
+                results.push({ email: processedEmail, status: 'added' });
             } catch (error) {
                 console.error(`Error processing email ${email}:`, error);
                 results.push({ 
@@ -103,102 +129,6 @@ export const uploadTeacherEmails = async (req, res) => {
     }
 };
 
-// @desc    Request teacher verification code
-// @route   POST /api/teachers/request-verification
-// @access  Public
-export const requestTeacherVerification = async (req, res) => {
-    try {
-        const { email } = req.body;
-
-        // Check if email exists in teacher emails
-        const teacherEmail = await TeacherEmail.findOne({ 
-            email: email.toLowerCase()
-        });
-
-        if (!teacherEmail) {
-            return res.status(400).json({
-                success: false,
-                message: 'This email is not authorized for teacher access. Please contact the administrator.'
-            });
-        }
-
-        // Check if email is already verified and used
-        if (teacherEmail.isUsed) {
-            return res.status(400).json({
-                success: false,
-                message: 'This email has already been used for teacher registration.'
-            });
-        }
-
-        // Generate and save verification code
-        const verificationCode = teacherEmail.generateVerificationCode();
-        await teacherEmail.save();
-
-        // Log the verification code for debugging
-        console.log(`Verification code for ${teacherEmail.email}: ${verificationCode}`);
-
-        // Send verification email with code
-        try {
-            await sendEmail({
-                email: teacherEmail.email,
-                subject: 'Your Teacher Verification Code',
-                message: `Your verification code is: ${verificationCode}\n\nThis code will expire in 24 hours.`
-            });
-
-            res.status(200).json({
-                success: true,
-                message: 'Verification code sent. Please check your email.'
-            });
-        } catch (error) {
-            console.error('Error sending verification email:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Error sending verification code. Please try again.'
-            });
-        }
-    } catch (error) {
-        console.error('Error requesting teacher verification:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-};
-
-// @desc    Verify teacher with one-time code
-// @route   POST /api/teachers/verify
-// @access  Public
-export const verifyTeacher = async (req, res) => {
-    try {
-        const { email, code } = req.body;
-
-        // Find teacher email by email and code
-        const teacherEmail = await TeacherEmail.findOne({
-            email: email.toLowerCase(),
-            verificationCode: code,
-            verificationExpires: { $gt: Date.now() },
-            isUsed: false
-        });
-
-        if (!teacherEmail) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid or expired verification code'
-            });
-        }
-
-        // Mark as verified but not used yet
-        teacherEmail.isVerified = true;
-        teacherEmail.verifiedAt = Date.now();
-        teacherEmail.verificationCode = undefined;
-        await teacherEmail.save();
-
-        res.status(200).json({
-            success: true,
-            message: 'Email verified successfully. You can now complete your teacher registration.'
-        });
-    } catch (error) {
-        console.error('Error verifying teacher email:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-};
 
 // @desc    Add a single teacher email
 // @route   POST /api/teachers/emails
@@ -208,10 +138,10 @@ export const addTeacherEmail = async (req, res) => {
         const { email } = req.body;
 
         // Validate email format
-        if (!email || !email.match(/^[^\s@]+@git\.edu$/i)) {
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return res.status(400).json({
                 success: false,
-                message: 'Please provide a valid teacher email ending with @git.edu'
+                message: 'Please provide a valid email address'
             });
         }
 

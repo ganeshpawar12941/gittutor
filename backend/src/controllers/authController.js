@@ -55,8 +55,19 @@ export const register = async (req, res) => {
             });
         }
 
-        // Check if teacher email is authorized
+        // Check if teacher email is authorized and has the correct domain
         if (isTeacherSignup) {
+            const emailParts = email.split('@');
+            const emailDomain = emailParts[1].toLowerCase();
+            const expectedDomain = 'git.edu';
+
+            if (emailDomain !== expectedDomain) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Teacher registration requires a @${expectedDomain} email address.`
+                });
+            }
+
             const teacherEmail = await TeacherEmail.findOne({
                 email: email.toLowerCase(),
                 isUsed: false
@@ -105,33 +116,25 @@ export const register = async (req, res) => {
             const verificationToken = user.getEmailVerificationToken();
             await user.save({ validateBeforeSave: false });
 
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
-            const verificationUrl = `${baseUrl}/api/auth/verify-email/${verificationToken}`;
+            // const baseUrl = `${req.protocol}://${req.get('host')}`;
+            const verificationUrl = `${FRONTEND_URL}/api/auth/verify-email/${verificationToken}`;
 
             const emailMessage = `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; text-align: center; padding: 20px;">
                     <h2 style="color: #4a6fdc;">Welcome to GitTutor!</h2>
-                    <p>Thank you for registering as a teacher. Here's your verification token for Postman testing:</p>
+                    <p>Please click the link below to verify your email address and log in:</p>
                     
-                    <div style="background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 20px 0;">
-                        <p><strong>Verification Token:</strong></p>
-                        <p style="word-break: break-all; background: white; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">${verificationToken}</p>
-                        
-                        <p><strong>Full Verification URL (for Postman):</strong></p>
-                        <p style="word-break: break-all; background: white; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">${verificationUrl}</p>
-                        
-                        <p><strong>To verify in Postman:</strong></p>
-                        <ol>
-                            <li>Open Postman</li>
-                            <li>Create a new GET request</li>
-                            <li>Enter the URL above</li>
-                            <li>Send the request</li>
-                        </ol>
+                    <div style="margin: 30px 0;">
+                        <a href="${verificationUrl}" 
+                           style="display: inline-block; padding: 12px 24px; background-color: #4a6fdc; 
+                                  color: white; text-decoration: none; border-radius: 4px; font-weight: bold;">
+                            Verify & Log In
+                        </a>
                     </div>
                     
-                    <p>This link will expire in 10 minutes.</p>
-                    <p>If you didn't create an account, you can safely ignore this email.</p>
-                    <p>Best regards,<br>The GitTutor Team</p>
+                    <p style="font-size: 0.8em; color: #666; margin-top: 30px;">
+                        This link will expire in 10 minutes.
+                    </p>
                 </div>
             `;
 

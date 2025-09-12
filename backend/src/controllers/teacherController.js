@@ -29,14 +29,22 @@ export const uploadTeacherEmails = async (req, res) => {
                 
                 let email = input.trim().toLowerCase();
                 
-                // If it's just a username, add the default domain
+                // If it's just a username, add the git.edu domain
                 if (!email.includes('@') && email.length > 0) {
                     email = `${email}@git.edu`;
+                } else if (email.includes('@')) {
+                    // If it has an @, ensure it's @git.edu
+                    const [localPart, domain] = email.split('@');
+                    if (domain.toLowerCase() !== 'git.edu') {
+                        console.log(`Invalid domain for teacher email: ${email}`);
+                        return null;
+                    }
+                    email = `${localPart}@git.edu`; // Ensure consistent formatting
                 }
                 
                 // Basic email format validation
-                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                    console.log(`Invalid email format: ${email}`);
+                if (!/^[^\s@]+@git\.edu$/.test(email)) {
+                    console.log(`Invalid email format or domain: ${email}`);
                     return null;
                 }
                 

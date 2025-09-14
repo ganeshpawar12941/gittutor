@@ -1,6 +1,7 @@
 import Course from '../models/Course.js';
 import User from '../models/User.js';
 import { validationResult } from 'express-validator';
+import { cloudinary } from '../utils/cloudinary.js';
 
 // @desc    Get all courses
 // @route   GET /api/courses
@@ -120,18 +121,41 @@ export const getCourse = async (req, res) => {
 
 // @desc    Create course
 // @route   POST /api/courses
-// @access  Private/Teacher
+// @access  Private/Admin
 export const createCourse = async (req, res) => {
     try {
+        // Only allow admins to create courses
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only administrators can create courses'
+            });
+        }
+
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            // If there are validation errors and a file was uploaded, delete it
+            if (req.file) {
+                await cloudinary.uploader.destroy(req.file.filename);
+            }
             return res.status(400).json({ errors: errors.array() });
         }
 
-        // Add user to req.body
-        req.body.teacher = req.user.id;
+        // Prepare course data
+        const courseData = {
+            ...req.body,
+            teacher: req.user.id
+        };
 
-        const course = await Course.create(req.body);
+        // If thumbnail was uploaded, add it to course data
+        if (req.file) {
+            courseData.thumbnail = {
+                url: req.file.path,
+                public_id: req.file.filename
+            };
+        }
+
+        const course = await Course.create(courseData);
 
         res.status(201).json({
             success: true,
@@ -148,32 +172,61 @@ export const createCourse = async (req, res) => {
 
 // @desc    Update course
 // @route   PUT /api/courses/:id
-// @access  Private
+// @access  Private/Admin
 export const updateCourse = async (req, res) => {
     try {
+        // Only allow admins to update courses
+        if (req.user.role !== 'admin') {
+            // Cleanup uploaded file if any
+            if (req.file) {
+                await cloudinary.uploader.destroy(req.file.filename);
+            }
+            return res.status(403).json({
+                success: false,
+                message: 'Only administrators can update courses'
+            });
+        }
+
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
+            // Cleanup uploaded file if there are validation errors
+            if (req.file) {
+                await cloudinary.uploader.destroy(req.file.filename);
+            }
             return res.status(400).json({ errors: errors.array() });
         }
 
         let course = await Course.findById(req.params.id);
 
         if (!course) {
+            // Cleanup uploaded file if course not found
+            if (req.file) {
+                await cloudinary.uploader.destroy(req.file.filename);
+            }
             return res.status(404).json({
                 success: false,
                 message: 'Course not found'
             });
         }
 
-        // Make sure user is course owner or admin
-        if (course.teacher.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(401).json({
-                success: false,
-                message: 'Not authorized to update this course'
-            });
+        // Prepare update data
+        const updateData = { ...req.body };
+        
+        // Handle thumbnail update if a new one was uploaded
+        if (req.file) {
+            // Delete old thumbnail if it exists and is not the default
+            if (course.thumbnail && course.thumbnail.public_id && 
+                !course.thumbnail.public_id.startsWith('default-')) {
+                await cloudinary.uploader.destroy(course.thumbnail.public_id);
+            }
+            
+            updateData.thumbnail = {
+                url: req.file.path,
+                public_id: req.file.filename
+            };
         }
 
-        course = await Course.findByIdAndUpdate(req.params.id, req.body, {
+        course = await Course.findByIdAndUpdate(req.params.id, updateData, {
             new: true,
             runValidators: true
         });
@@ -199,9 +252,17 @@ export const updateCourse = async (req, res) => {
 
 // @desc    Delete course
 // @route   DELETE /api/courses/:id
-// @access  Private
+// @access  Private/Admin
 export const deleteCourse = async (req, res) => {
     try {
+        // Only allow admins to delete courses
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only administrators can delete courses'
+            });
+        }
+
         const course = await Course.findById(req.params.id);
 
         if (!course) {
@@ -211,12 +272,15 @@ export const deleteCourse = async (req, res) => {
             });
         }
 
-        // Make sure user is course owner or admin
-        if (course.teacher.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(401).json({
-                success: false,
-                message: 'Not authorized to delete this course'
-            });
+        // Delete thumbnail from Cloudinary if it exists and is not the default
+        if (course.thumbnail && course.thumbnail.public_id && 
+            !course.thumbnail.public_id.startsWith('default-')) {
+            try {
+                await cloudinary.uploader.destroy(course.thumbnail.public_id);
+            } catch (err) {
+                console.error('Error deleting thumbnail from Cloudinary:', err);
+                // Continue with course deletion even if thumbnail deletion fails
+            }
         }
 
         await course.remove();

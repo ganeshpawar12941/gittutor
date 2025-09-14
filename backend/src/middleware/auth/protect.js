@@ -1,8 +1,8 @@
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import User from '../../models/User.js';
 
 // Middleware to verify JWT token
-export const protect = async (req, res, next) => {
+export default async (req, res, next) => {
     try {
         let token;
         
@@ -39,17 +39,4 @@ export const protect = async (req, res, next) => {
             message: 'Server error'
         });
     }
-};
-
-// Grant access to specific roles
-export const authorize = (...roles) => {
-    return (req, res, next) => {
-        if (!roles.includes(req.user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: `User role ${req.user.role} is not authorized to access this route`
-            });
-        }
-        next();
-    };
 };

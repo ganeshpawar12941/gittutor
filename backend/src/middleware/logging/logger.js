@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Ensure log directory exists
-const logDirectory = path.join(__dirname, '..', '..', 'logs');
+const logDirectory = path.join(__dirname, '..', '..', '..', 'logs');
 fs.existsSync(logDirectory) || fs.mkdirSync(logDirectory, { recursive: true });
 
 // Create a rotating write stream for request logs
@@ -50,25 +50,21 @@ const fileLogger = morgan(format, {
 // Error logging middleware
 const errorLogger = (err, req, res, next) => {
     const errorLogStream = rfs.createStream('error.log', {
-        interval: '1d',
+        size: '10M',
         path: logDirectory,
         compress: 'gzip',
-        size: '10M',
         maxFiles: 30
     });
-
-    const errorLog = `[${new Date().toISOString()}] ${req.method} ${req.url} - ${err.stack || err.message}\n`;
     
-    errorLogStream.write(errorLog);
+    const errorMessage = `[${new Date().toISOString()}] ${err.stack || err.message}\n`;
+    errorLogStream.write(errorMessage);
+    
     next(err);
 };
 
 // Request logging middleware
 const requestLogger = (req, res, next) => {
-    // Log only in development or if explicitly enabled in production
-    if (process.env.NODE_ENV !== 'test' && req.path !== '/health') {
-        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    }
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
     next();
 };
 
@@ -76,5 +72,6 @@ export {
     consoleLogger,
     fileLogger,
     errorLogger,
-    requestLogger
+    requestLogger,
+    format
 };

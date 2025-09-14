@@ -27,8 +27,14 @@ const courseSchema = new mongoose.Schema({
         ref: 'User'
     }],
     thumbnail: {
-        type: String,
-        default: 'default-thumbnail.jpg'
+        url: {
+            type: String,
+            default: 'https://res.cloudinary.com/demo/image/upload/v1629305882/default-course-thumbnail.jpg'
+        },
+        public_id: {
+            type: String,
+            default: 'default-course-thumbnail'
+        }
     },
     isActive: {
         type: Boolean,

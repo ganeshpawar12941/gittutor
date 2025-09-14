@@ -1,6 +1,11 @@
 import express from 'express';
 import { check } from 'express-validator';
-import { protect, authorize } from '../middleware/auth.js';
+import { 
+    protect, 
+    authorize, 
+    uploadSingle,
+    validateRequest
+} from '../middleware/index.js';
 import {
     getCourses,
     getCourse,
@@ -23,11 +28,13 @@ router.use(protect);
 // Teacher and admin routes
 router.post(
     '/',
-    authorize('teacher', 'admin'),
+    authorize('admin'),
+    uploadSingle('thumbnail'),
     [
         check('title', 'Title is required').not().isEmpty(),
         check('code', 'Course code is required').not().isEmpty(),
-        check('description', 'Description is required').not().isEmpty()
+        check('description', 'Description is required').not().isEmpty(),
+        check('thumbnail', 'Please upload a valid image file').optional()
     ],
     createCourse
 );
@@ -35,15 +42,17 @@ router.post(
 router
     .route('/:id')
     .put(
-        authorize('teacher', 'admin'),
+        authorize('admin'),
+        uploadSingle('thumbnail'),
         [
             check('title', 'Title is required').not().isEmpty(),
             check('code', 'Course code is required').not().isEmpty(),
-            check('description', 'Description is required').not().isEmpty()
+            check('description', 'Description is required').not().isEmpty(),
+            check('thumbnail', 'Please upload a valid image file').optional()
         ],
         updateCourse
     )
-    .delete(authorize('teacher', 'admin'), deleteCourse);
+    .delete(authorize('admin'), deleteCourse);
 
 // Student routes
 router.post('/:id/enroll', authorize('student'), enrollInCourse);

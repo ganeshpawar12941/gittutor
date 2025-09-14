@@ -1,5 +1,5 @@
 import { validationResult } from 'express-validator';
-import { validationError } from '../utils/apiResponse.js';
+import { validationError } from '../../utils/apiResponse.js';
 
 /**
  * Middleware to validate request using express-validator

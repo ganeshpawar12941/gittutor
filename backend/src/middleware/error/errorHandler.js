@@ -1,4 +1,4 @@
-import { errorResponse } from '../utils/apiResponse.js';
+import { errorResponse } from '../../utils/apiResponse.js';
 import { Error as MongooseError } from 'mongoose';
 import { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
 
@@ -50,11 +50,12 @@ const errorHandler = (err, req, res, next) => {
         return errorResponse(res, 400, `File upload error: ${err.message}`);
     }
 
-    // Default error response
-    const statusCode = err.statusCode || 500;
-    const message = err.message || 'Internal Server Error';
-    
-    errorResponse(res, statusCode, message);
+    // Default error handler
+    errorResponse(
+        res, 
+        err.statusCode || 500, 
+        err.message || 'Internal Server Error'
+    );
 };
 
 export default errorHandler;

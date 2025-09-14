@@ -1,6 +1,6 @@
 import express from 'express';
 import { check } from 'express-validator';
-import { protect, authorize } from '../middleware/auth.js';
+import { protect, authorize, validateRequest } from '../middleware/index.js';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';

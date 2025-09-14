@@ -1,5 +1,8 @@
+import 'dotenv/config';
 import mongoose from 'mongoose';
 import app from './app.js';
+
+console.log('Environment:', process.env.NODE_ENV || 'development');
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI || "mongodb+srv://gptech45_db_user:ganesh123@cluster2.a9m8vlr.mongodb.net/gittutor")

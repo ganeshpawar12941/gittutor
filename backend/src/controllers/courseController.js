@@ -163,9 +163,29 @@ export const createCourse = async (req, res) => {
         });
     } catch (err) {
         console.error('Create course error:', err);
+        
+        // If there was a file uploaded but an error occurred, try to remove it from Cloudinary
+        if (req.file) {
+            try {
+                await cloudinary.uploader.destroy(req.file.filename);
+            } catch (cloudinaryErr) {
+                console.error('Error cleaning up uploaded file:', cloudinaryErr);
+            }
+        }
+        
+        let message = 'Server error';
+        if (err.name === 'ValidationError') {
+            message = Object.values(err.errors).map(val => val.message).join(', ');
+        } else if (err.code === 11000) {
+            message = 'Duplicate field value entered';
+        } else if (err.message.includes('timed out')) {
+            message = 'Request to file storage service timed out';
+        }
+        
         res.status(500).json({
             success: false,
-            message: 'Server error'
+            message: message,
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 };
@@ -283,7 +303,7 @@ export const deleteCourse = async (req, res) => {
             }
         }
 
-        await course.remove();
+        await Course.deleteOne({ _id: course._id });
 
         res.status(200).json({
             success: true,

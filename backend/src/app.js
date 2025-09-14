@@ -5,7 +5,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 // Import middleware directly to avoid circular dependencies
-import { errorHandler } from './middleware/error/errorHandler.js';
+import errorHandler from './middleware/error/errorHandler.js';
 import { setSecurityPolicies } from './middleware/security/securityHeaders.js';
 import { configureCors } from './middleware/security/requestSanitization.js';
 import { consoleLogger, fileLogger } from './middleware/logging/logger.js';

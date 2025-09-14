@@ -1,8 +1,8 @@
-import { errorResponse } from '../../utils/apiResponse.js';
+import { error } from '../../utils/apiResponse.js';
 import { Error as MongooseError } from 'mongoose';
-import { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 
-const { ValidationError } = MongooseError;
+const { JsonWebTokenError, TokenExpiredError } = jwt;
 
 /**
  * Error handling middleware for Express
@@ -14,9 +14,8 @@ const { ValidationError } = MongooseError;
 const errorHandler = (err, req, res, next) => {
     console.error('Error:', err);
 
-    // Handle specific error types
-    if (err instanceof ValidationError) {
-        // Mongoose validation error
+    // Mongoose Validation Error
+    if (err.name === 'ValidationError') {
         const errors = {};
         Object.keys(err.errors).forEach((key) => {
             errors[key] = err.errors[key].message;
@@ -24,36 +23,36 @@ const errorHandler = (err, req, res, next) => {
         return errorResponse(res, 400, 'Validation Error', errors);
     }
 
+    // MongoDB Duplicate Key Error
     if (err.code === 11000) {
-        // MongoDB duplicate key error
-        const field = Object.keys(err.keyValue)[0];
+        const field = err.keyValue ? Object.keys(err.keyValue)[0] : 'field';
         return errorResponse(res, 400, `${field} already exists`);
     }
 
+    // Invalid MongoDB ObjectId
     if (err.name === 'CastError') {
-        // Invalid MongoDB ObjectId
         return errorResponse(res, 400, 'Invalid ID format');
     }
 
-    if (err instanceof JsonWebTokenError) {
-        // JWT error
-        return errorResponse(res, 401, 'Invalid token');
-    }
-
+    // JWT Expired Error (check first!)
     if (err instanceof TokenExpiredError) {
-        // JWT expired
         return errorResponse(res, 401, 'Token expired');
     }
 
-    // Handle multer file upload errors
+    // JWT Error
+    if (err instanceof JsonWebTokenError) {
+        return errorResponse(res, 401, 'Invalid token');
+    }
+
+    // Multer File Upload Error
     if (err.name === 'MulterError') {
         return errorResponse(res, 400, `File upload error: ${err.message}`);
     }
 
-    // Default error handler
-    errorResponse(
-        res, 
-        err.statusCode || 500, 
+    // Default / Unknown Error
+    return errorResponse(
+        res,
+        err.statusCode || 500,
         err.message || 'Internal Server Error'
     );
 };

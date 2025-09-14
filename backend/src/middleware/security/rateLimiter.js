@@ -1,5 +1,5 @@
 import rateLimit from 'express-rate-limit';
-import { errorResponse } from '../../utils/apiResponse.js';
+import { error } from '../../utils/apiResponse.js';
 
 // Limit requests from same API
 const apiLimiter = rateLimit({

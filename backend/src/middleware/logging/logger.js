@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import morgan from 'morgan';
-import rfs from 'rotating-file-stream';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const rfs = require('rotating-file-stream');
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);

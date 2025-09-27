@@ -16,67 +16,6 @@ export const transporter = nodemailer.createTransport({
 });
 
 /**
- * Enroll a student in a course
- * @route POST /api/enrollments
- * @access Private/Student
- */
-export const enrollInCourse = async (req, res) => {
-    try {
-        const { courseId } = req.body;
-        const studentId = req.user.id;
-
-        // Check if course exists
-        const course = await Course.findById(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                message: 'Course not found'
-            });
-        }
-
-        // Check if already enrolled
-        const existingEnrollment = await Enrollment.findOne({
-            student: studentId,
-            course: courseId
-        });
-
-        if (existingEnrollment) {
-            return res.status(400).json({
-                success: false,
-                message: 'You are already enrolled in this course'
-            });
-        }
-
-        // Create enrollment
-        const enrollment = await Enrollment.create({
-            student: studentId,
-            course: courseId
-        });
-
-        // Add course to student's enrolled courses
-        await User.findByIdAndUpdate(studentId, {
-            $addToSet: { enrolledCourses: courseId }
-        });
-
-        // Add student to course's students array
-        await Course.findByIdAndUpdate(courseId, {
-            $addToSet: { students: studentId }
-        });
-
-        res.status(201).json({
-            success: true,
-            data: enrollment
-        });
-    } catch (err) {
-        console.error('Enrollment error:', err);
-        res.status(500).json({
-            success: false,
-            message: 'Server error during enrollment'
-        });
-    }
-};
-
-/**
  * Send notification to all enrolled students when a new video is uploaded
  * @param {string} videoId - The ID of the uploaded video
  * @param {string} courseId - The ID of the course

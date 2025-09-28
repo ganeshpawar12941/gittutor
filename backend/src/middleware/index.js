@@ -1,44 +1,39 @@
-// Export all middlewares from one place
+// Import all middleware components
+import { protect, authorize } from './auth/index.js';
+import errorHandler from './error/errorHandler.js';
+import validateRequest from './validation/validateRequest.js';
+import { uploadVideo, cleanupTempFiles } from './upload/videoUpload.js';
+import { securityHeaders, requestSanitization, rateLimiter } from './security/index.js';
+import { consoleLogger, fileLogger, errorLogger, requestLogger } from './logging/logger.js';
+import asyncHandler from './async/asyncHandler.js';
 
-// Authentication & Authorization
-export { default as protect } from './auth/protect.js';
-export { default as authorize } from './auth/authorize.js';
-
-// File Uploads
-export { upload, uploadSingle } from './upload/upload.js';
-
-// Request Validation
-export { default as validateRequest } from './validation/validateRequest.js';
-
-// Error Handling
-export { default as errorHandler } from './error/errorHandler.js';
-
-// Security
-export { 
-    setSecurityHeaders, 
-    setSecurityPolicies 
-} from './security/securityHeaders.js';
-
-export { 
-    apiLimiter, 
-    loginLimiter 
-} from './security/rateLimiter.js';
-
-export { 
-    preventParameterPollution, 
-    sanitizeXSS, 
-    sanitizeMongo, 
-    configureCors 
-} from './security/requestSanitization.js';
-
-// Logging
-export { 
-    consoleLogger, 
-    fileLogger, 
-    errorLogger, 
-    requestLogger,
-    format as logFormat
-} from './logging/logger.js';
-
-// Async Handler
-export { default as asyncHandler } from './async/asyncHandler.js';
+// Export all middleware components
+export {
+  // Authentication
+  protect,
+  authorize,
+  
+  // Error handling
+  errorHandler,
+  
+  // Validation
+  validateRequest,
+  
+  // Upload
+  uploadVideo,
+  cleanupTempFiles,
+  
+  // Security
+  securityHeaders,
+  requestSanitization,
+  rateLimiter,
+  
+  // Logging
+  consoleLogger,
+  fileLogger,
+  errorLogger,
+  requestLogger,
+  
+  // Async handler
+  asyncHandler
+};

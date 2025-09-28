@@ -34,4 +34,4 @@ const validateRequest = (validations) => {
     ];
 };
 
-export default validateRequest;
+export {validateRequest};

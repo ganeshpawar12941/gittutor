@@ -5,76 +5,69 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { notifyStudentsAboutNewVideo } from './enrollmentController.js';
+import { uploadToS3, deleteFromS3 } from '../utils/awsS3.js';
+import ApiError from '../utils/ApiError.js';
+import { unlink } from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// @desc    Get all videos
-// @route   GET /api/videos
-// @access  Public
-export const getVideos = async (req, res) => {
+/**
+ * @desc    Get all videos with filtering, sorting, and pagination
+ * @route   GET /api/videos
+ * @access  Public
+ */
+export const getVideos = async (req, res, next) => {
     try {
         // Copy req.query
         const reqQuery = { ...req.query };
 
-        // Fields to exclude
+        // Fields to exclude from filtering
         const removeFields = ['select', 'sort', 'page', 'limit'];
-
-        // Loop over removeFields and delete them from reqQuery
         removeFields.forEach(param => delete reqQuery[param]);
 
-        // Create query string
+        // Create query string and add $ to operators
         let queryStr = JSON.stringify(reqQuery);
-
-        // Create operators ($gt, $gte, etc)
         queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
 
-        // Finding resource
+        // Base query with filtering
         let query = Video.find(JSON.parse(queryStr))
             .populate('course', 'title code')
             .populate('uploadedBy', 'name email');
 
-        // Select Fields
+        // Field selection
         if (req.query.select) {
             const fields = req.query.select.split(',').join(' ');
             query = query.select(fields);
         }
 
-        // Sort
-        if (req.query.sort) {
-            const sortBy = req.query.sort.split(',').join(' ');
-            query = query.sort(sortBy);
-        } else {
-            query = query.sort('-createdAt');
-        }
+        // Sorting
+        const sortBy = req.query.sort ? 
+            req.query.sort.split(',').join(' ') : 
+            '-createdAt';
+        query = query.sort(sortBy);
 
         // Pagination
         const page = parseInt(req.query.page, 10) || 1;
         const limit = parseInt(req.query.limit, 10) || 10;
         const startIndex = (page - 1) * limit;
-        const endIndex = page * limit;
         const total = await Video.countDocuments(JSON.parse(queryStr));
 
         query = query.skip(startIndex).limit(limit);
 
-        // Executing query
+        // Execute query
         const videos = await query;
 
-        // Pagination result
+        // Build pagination result
         const pagination = {};
+        const endIndex = page * limit;
 
         if (endIndex < total) {
-            pagination.next = {
-                page: page + 1,
-                limit
-            };
+            pagination.next = { page: page + 1, limit };
         }
 
         if (startIndex > 0) {
-            pagination.prev = {
-                page: page - 1,
-                limit
-            };
+            pagination.prev = { page: page - 1, limit };
         }
 
         res.status(200).json({
@@ -83,293 +76,271 @@ export const getVideos = async (req, res) => {
             pagination,
             data: videos
         });
-    } catch (err) {
-        console.error('Get videos error:', err);
-        res.status(500).json({
-            success: false,
-            message: 'Server error'
-        });
+    } catch (error) {
+        next(error);
     }
 };
 
-// @desc    Get single video
-// @route   GET /api/videos/:id
-// @access  Public
-export const getVideo = async (req, res) => {
+/**
+ * @desc    Get single video by ID and increment view count
+ * @route   GET /api/videos/:id
+ * @access  Public
+ */
+export const getVideo = async (req, res, next) => {
     try {
-        const video = await Video.findById(req.params.id)
-            .populate('course', 'title code')
-            .populate('uploadedBy', 'name email');
+        const video = await Video.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { views: 1 } },
+            { new: true }
+        )
+        .populate('course', 'title code')
+        .populate('uploadedBy', 'name email');
 
         if (!video) {
-            return res.status(404).json({
-                success: false,
-                message: 'Video not found'
-            });
+            throw new ApiError(404, 'Video not found');
         }
-
-        // Increment view count
-        video.views += 1;
-        await video.save();
 
         res.status(200).json({
             success: true,
             data: video
         });
-    } catch (err) {
-        console.error('Get video error:', err);
-        if (err.kind === 'ObjectId') {
-            return res.status(404).json({
-                success: false,
-                message: 'Video not found'
-            });
+    } catch (error) {
+        if (error.kind === 'ObjectId') {
+            return next(new ApiError(404, 'Video not found'));
         }
-        res.status(500).json({
-            success: false,
-            message: 'Server error'
-        });
+        next(error);
     }
 };
 
-// @desc    Upload video
-// @route   POST /api/videos/upload
-// @access  Private/Teacher
-export const uploadVideo = async (req, res) => {
+/**
+ * @desc    Upload video
+ * @route   POST /api/videos/upload
+ * @access  Private/Teacher
+ */
+export const uploadVideo = async (req, res, next) => {
     try {
-        // Check for validation errors
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                errors: errors.array()
-            });
+        const { title, description, course, duration, isFree, order, thumbnail } = req.body;
+
+        // Check if course exists and populate teacher
+        const courseExists = await Course.findById(course).populate('teacher', 'id');
+        if (!courseExists) {
+            console.error(`Course not found with ID: ${course}`);
+            throw new ApiError(404, 'Course not found');
         }
 
-        const { title, description, duration, course, tags = [] } = req.body;
-        const uploadedBy = req.user.id;
+        // Debug logging
+        console.log('Course Teacher ID:', courseExists.teacher?._id || 'No teacher');
+        console.log('Request User ID:', req.user?.id);
 
-        // Check if course exists and user is the teacher of the course
-        const courseObj = await Course.findById(course);
-        if (!courseObj) {
-            return res.status(404).json({
-                success: false,
-                message: 'Course not found'
-            });
+        // Check if user is the teacher of the course
+        if (!courseExists.teacher || courseExists.teacher._id.toString() !== req.user.id) {
+            console.error(`User ${req.user?.id} is not authorized to add videos to course ${course}`);
+            throw new ApiError(403, 'Not authorized to add videos to this course');
         }
 
-        // Check if the user is the teacher of the course or an admin
-        if (courseObj.teacher.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Not authorized to add videos to this course'
-            });
+        if (!req.file) {
+            throw new ApiError(400, 'Please upload a video file');
         }
 
-        // Handle file upload
-        if (!req.files || !req.files.video) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please upload a video file'
-            });
-        }
-
-        const videoFile = req.files.video;
-        
-        // Check file type
-        const fileTypes = ['video/mp4', 'video/webm', 'video/ogg'];
-        if (!fileTypes.includes(videoFile.mimetype)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Please upload a valid video file (MP4, WebM, or OGG)'
-            });
-        }
-
-        // Check file size (50MB max)
-        const maxSize = 50 * 1024 * 1024; // 50MB
-        if (videoFile.size > maxSize) {
-            return res.status(400).json({
-                success: false,
-                message: 'Video size should be less than 50MB'
-            });
-        }
-
-        // Create custom filename
-        const fileExt = path.extname(videoFile.name);
-        const fileName = `video_${Date.now()}${fileExt}`;
-        const uploadPath = path.join(__dirname, '../uploads/videos', fileName);
-
-        // Create uploads directory if it doesn't exist
-        const uploadDir = path.join(__dirname, '../uploads/videos');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-
-        // Move the file to uploads directory
-        await videoFile.mv(uploadPath);
-
-        // Create video in database
-        const video = await Video.create({
-            title,
-            description,
-            url: `/uploads/videos/${fileName}`,
-            duration,
-            course,
-            uploadedBy,
-            tags: Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim())
-        });
-
-        // Populate the video with course and uploadedBy details
-        const populatedVideo = await Video.findById(video._id)
-            .populate('course', 'title')
-            .populate('uploadedBy', 'name');
-
-        // Notify enrolled students about the new video (in background)
+        let uploadResult;
         try {
-            await notifyStudentsAboutNewVideo(video._id, course, uploadedBy);
-        } catch (notifyError) {
-            console.error('Error sending notifications:', notifyError);
-            // Don't fail the request if notification fails
-        }
+            // Upload to S3
+            uploadResult = await uploadToS3(req.file, `courses/${course}/videos`);
 
-        res.status(201).json({
-            success: true,
-            data: populatedVideo
-        });
-    } catch (err) {
-        console.error('Upload video error:', err);
-        res.status(500).json({
-            success: false,
-            message: 'Server error during video upload'
-        });
+            // Create video record in database
+            const video = await Video.create({
+                title,
+                description,
+                course,
+                duration,
+                isFree: isFree || false,
+                order: order || 0,
+                url: uploadResult.location,
+                s3Key: uploadResult.key,
+                bucket: uploadResult.bucket,
+                thumbnail: thumbnail || '',
+                uploadedBy: req.user.id,
+                size: uploadResult.size,
+                mimeType: uploadResult.mimetype || req.file.mimetype,
+                durationInSeconds: duration || 0
+            });
+
+            // Populate the course and uploadedBy fields
+            const populatedVideo = await Video.findById(video._id)
+                .populate('course', 'title code')
+                .populate('uploadedBy', 'name email');
+
+            // Notify enrolled students about the new video (non-blocking)
+            notifyStudentsAboutNewVideo(course, video._id).catch(err => {
+                console.error('Error notifying students:', err);
+            });
+
+            res.status(201).json({
+                success: true,
+                data: populatedVideo
+            });
+        } catch (error) {
+            // If there's an error after S3 upload, clean up the S3 file
+            if (uploadResult?.key) {
+                await deleteFromS3(uploadResult.key).catch(console.error);
+            }
+            throw error;
+        }
+    } catch (error) {
+        // Clean up the uploaded file if it exists
+        if (req.file?.path) {
+            try {
+                await unlink(req.file.path);
+            } catch (cleanupErr) {
+                console.error('Error cleaning up temp file:', cleanupErr);
+            }
+        }
+        next(error);
     }
 };
 
-// @desc    Update video
-// @route   PUT /api/videos/:id
-// @access  Private
-export const updateVideo = async (req, res) => {
+/**
+ * @desc    Update video details
+ * @route   PUT /api/videos/:id
+ * @access  Private
+ */
+export const updateVideo = async (req, res, next) => {
     try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
+        const { title, description, duration, isFree, order, isPublished, thumbnail } = req.body;
 
-        let video = await Video.findById(req.params.id);
-
+        // Find video and check existence
+        const video = await Video.findById(req.params.id);
         if (!video) {
-            return res.status(404).json({
-                success: false,
-                message: 'Video not found'
-            });
+            throw new ApiError(404, 'Video not found');
         }
 
-        // Make sure user is video uploader or admin
-        if (video.uploadedBy.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(401).json({
-                success: false,
-                message: 'Not authorized to update this video'
-            });
+        // Verify user is the course instructor
+        const course = await Course.findById(video.course);
+        if (!course) {
+            throw new ApiError(404, 'Associated course not found');
         }
+
+        if (course.instructor.toString() !== req.user.id) {
+            throw new ApiError(403, 'Not authorized to update this video');
+        }
+
+        // Prepare update object with only provided fields
+        const updateFields = { updatedAt: Date.now() };
+        if (title !== undefined) updateFields.title = title;
+        if (description !== undefined) updateFields.description = description;
+        if (duration !== undefined) updateFields.duration = duration;
+        if (isFree !== undefined) updateFields.isFree = isFree;
+        if (order !== undefined) updateFields.order = order;
+        if (isPublished !== undefined) updateFields.isPublished = isPublished;
+        if (thumbnail !== undefined) updateFields.thumbnail = thumbnail;
 
         // Update video
-        video = await Video.findByIdAndUpdate(req.params.id, req.body, {
-            new: true,
-            runValidators: true
-        });
+        const updatedVideo = await Video.findByIdAndUpdate(
+            req.params.id,
+            updateFields,
+            { new: true, runValidators: true }
+        )
+        .populate('course', 'title code')
+        .populate('uploadedBy', 'name email');
+
+        if (!updatedVideo) {
+            throw new ApiError(500, 'Failed to update video');
+        }
 
         res.status(200).json({
             success: true,
-            data: video
+            data: updatedVideo
         });
-    } catch (err) {
-        console.error('Update video error:', err);
-        if (err.kind === 'ObjectId') {
-            return res.status(404).json({
-                success: false,
-                message: 'Video not found'
-            });
-        }
-        res.status(500).json({
-            success: false,
-            message: 'Server error'
-        });
+    } catch (error) {
+        next(error);
     }
 };
 
-// @desc    Delete video
-// @route   DELETE /api/videos/:id
-// @access  Private
-export const deleteVideo = async (req, res) => {
+/**
+ * @desc    Delete a video and its associated S3 file
+ * @route   DELETE /api/videos/:id
+ * @access  Private
+ */
+export const deleteVideo = async (req, res, next) => {
     try {
-        const video = await Video.findById(req.params.id);
-
+        // Find video with course populated for permission check
+        const video = await Video.findById(req.params.id).populate('course', 'instructor');
+        
         if (!video) {
-            return res.status(404).json({
-                success: false,
-                message: 'Video not found'
+            throw new ApiError(404, 'Video not found');
+        }
+
+        // Verify user is the course instructor or admin
+        if (video.course.instructor.toString() !== req.user.id && req.user.role !== 'admin') {
+            throw new ApiError(403, 'Not authorized to delete this video');
+        }
+
+        // Delete from S3 if it exists
+        if (video.s3Key) {
+            await deleteFromS3(video.s3Key).catch(err => {
+                console.error('Error deleting from S3:', err);
+                // Continue with database deletion even if S3 deletion fails
             });
         }
 
-        // Make sure user is video uploader or admin
-        if (video.uploadedBy.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(401).json({
-                success: false,
-                message: 'Not authorized to delete this video'
-            });
-        }
-
-        // Remove video file
-        const filePath = path.join(__dirname, '..', '..', video.url);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
-
-        // Remove video from course
-        await Course.findByIdAndUpdate(video.course, {
-            $pull: { videos: video._id }
-        });
-
-        // Delete video record
-        await video.remove();
+        // Delete from database
+        await Video.deleteOne({ _id: video._id });
 
         res.status(200).json({
             success: true,
-            data: {}
+            data: { id: video._id }
         });
-    } catch (err) {
-        console.error('Delete video error:', err);
-        if (err.kind === 'ObjectId') {
-            return res.status(404).json({
-                success: false,
-                message: 'Video not found'
-            });
+    } catch (error) {
+        if (error.kind === 'ObjectId') {
+            return next(new ApiError(404, 'Invalid video ID'));
         }
-        res.status(500).json({
-            success: false,
-            message: 'Server error'
-        });
+        next(error);
     }
 };
 
-// @desc    Get videos by course
-// @route   GET /api/videos/course/:courseId
-// @access  Public
-export const getVideosByCourse = async (req, res) => {
+/**
+ * @desc    Get all videos for a specific course
+ * @route   GET /api/videos/course/:courseId
+ * @access  Public
+ */
+export const getVideosByCourse = async (req, res, next) => {
     try {
-        const videos = await Video.find({ course: req.params.courseId })
+        const { courseId } = req.params;
+        
+        // Check if course exists
+        const course = await Course.findById(courseId);
+        if (!course) {
+            throw new ApiError(404, 'Course not found');
+        }
+
+        // Build query
+        const query = { course: courseId };
+        
+        // Non-instructors and unauthenticated users only see published videos
+        const isInstructor = req.user && 
+            (req.user.role === 'admin' || 
+             course.instructor.toString() === req.user.id);
+        
+        if (!isInstructor) {
+            query.isPublished = true;
+        }
+
+        // Get videos with optional sorting
+        const sortBy = req.query.sort || 'order';
+        const videos = await Video.find(query)
+            .sort(sortBy)
             .populate('uploadedBy', 'name email')
-            .sort('-createdAt');
+            .select('-s3Key -bucket'); // Exclude sensitive fields
 
         res.status(200).json({
             success: true,
             count: videos.length,
             data: videos
         });
-    } catch (err) {
-        console.error('Get videos by course error:', err);
-        res.status(500).json({
-            success: false,
-            message: 'Server error'
-        });
+    } catch (error) {
+        if (error.kind === 'ObjectId') {
+            return next(new ApiError(400, 'Invalid course ID'));
+        }
+        next(error);
     }
 };

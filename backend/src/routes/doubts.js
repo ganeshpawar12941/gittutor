@@ -1,6 +1,7 @@
 import express from 'express';
 import { check } from 'express-validator';
-import { protect, validateRequest } from '../middleware/index.js';
+import { protect } from '../middleware/auth/index.js';
+import { validateRequest } from '../middleware/validation/validateRequest.js';
 import {
     getDoubts,
     getDoubt,

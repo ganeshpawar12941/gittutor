@@ -1,9 +1,9 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
-import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import mime from 'mime-types';
+import { createReadStream, createWriteStream } from 'fs';
 import { 
   S3Client, 
   PutObjectCommand, 
@@ -16,12 +16,6 @@ import { errorResponse } from './apiResponse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const readdir = promisify(fs.readdir);
-const unlink = promisify(fs.unlink);
-const stat = promisify(fs.stat);
-const mkdir = promisify(fs.mkdir);
-const copyFile = promisify(fs.copyFile);
 
 // Configure AWS S3 client if environment variables are set
 let s3Client;

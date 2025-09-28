@@ -4,16 +4,28 @@
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "extensionsToTreatAsEsm": [".js"],
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    },
+    "testMatch": ["**/test/**/*.test.js"],
+    "testPathIgnorePatterns": ["/node_modules/"],
+    "verbose": true,
+    "collectCoverage": true,
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!**/node_modules/**",
+      "!**/coverage/**",
+      "!**/test/**"
+    ]
+  },
   "scripts": {
     "dev": "nodemon src/index.js",
-    "cleanup:middleware": "node scripts/cleanup-old-middleware.js",
-    "test:middleware": "mocha scripts/test-middleware.js --timeout 10000 --exit",
-    "test:auth": "mocha scripts/test-auth-middleware.js --timeout 5000 --exit",
-    "test:auth-direct": "node scripts/test-auth-direct.js",
-    "test:validation": "mocha scripts/test-validation.js --timeout 5000 --exit",
-    "test:error-handler": "mocha scripts/test-error-handler.js --timeout 5000 --exit",
-    "test:security": "mocha scripts/test-security.js --timeout 5000 --exit",
-    "test:all": "npm run test:auth-direct && npm run test:validation && npm run test:error-handler && npm run test:security"
+    "cleanup:middleware": "node scripts/cleanup-old-middleware.js"
   },
   "author": "Ganesh",
   "license": "ISC",
@@ -25,11 +37,12 @@
     "chai": "^4.5.0",
     "express-mongo-sanitize": "^2.2.0",
     "hpp": "^0.2.3",
+    "jest": "^30.2.0",
     "mocha": "^10.8.2",
     "multer-storage-cloudinary": "^4.0.0",
     "nodemon": "^3.1.10",
     "sinon": "^21.0.0",
-    "supertest": "^6.3.3",
+    "supertest": "^6.3.4",
     "xss-clean": "^0.1.4"
   },
   "dependencies": {
@@ -53,6 +66,7 @@
     "glob-parent": "^5.1.2",
     "has-flag": "^3.0.0",
     "helmet": "^8.1.0",
+    "http-status": "^2.1.0",
     "ignore-by-default": "^1.0.1",
     "is-binary-path": "^2.1.0",
     "is-extglob": "^2.1.1",

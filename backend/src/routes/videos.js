@@ -1,13 +1,9 @@
 import express from 'express';
 import { check } from 'express-validator';
-import { protect, authorize, validateRequest } from '../middleware/index.js';
-import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { protect, authorize } from '../middleware/auth/index.js';
+import { validateRequest } from '../middleware/validation/validateRequest.js';
+import { uploadVideo as uploadVideoMiddleware, cleanupTempFiles } from '../middleware/upload/videoUpload.js';
+import ApiError from '../utils/ApiError.js';
 
 import {
     getVideos,
@@ -20,41 +16,64 @@ import {
 
 const router = express.Router();
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, '..', '..', 'uploads', 'videos');
-        // Create uploads/videos directory if it doesn't exist
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        // Generate a unique filename with original extension
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'video-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
+// Validation middleware for video upload
+const videoValidations = [
+    check('title', 'Title is required and must be between 5 and 200 characters')
+        .notEmpty()
+        .isLength({ min: 5, max: 200 })
+        .trim(),
+    check('description', 'Description is required and must be between 10 and 2000 characters')
+        .notEmpty()
+        .isLength({ min: 10, max: 2000 })
+        .trim(),
+    check('course', 'Valid course ID is required')
+        .isMongoId()
+        .withMessage('Please provide a valid course ID'),
+    check('duration', 'Duration is required and must be a positive number')
+        .isInt({ min: 1 })
+        .toInt(),
+    check('isFree', 'isFree must be a boolean')
+        .optional()
+        .isBoolean()
+        .toBoolean(),
+    check('order', 'Order must be a non-negative number')
+        .optional()
+        .isInt({ min: 0 })
+        .toInt()
+];
 
-// File filter to only allow video files
-const fileFilter = (req, file, cb) => {
-    const filetypes = /mp4|mov|avi|wmv|flv|mkv/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype);
+// Wrap validations with validateRequest middleware
+const validateVideoUpload = validateRequest(videoValidations);
 
-    if (extname && mimetype) {
-        return cb(null, true);
-    } else {
-        cb(new Error('Only video files are allowed'));
-    }
-};
+// Validation rules for update
+const videoUpdateValidations = [
+    check('title', 'Title must be between 5 and 200 characters')
+        .optional()
+        .isLength({ min: 5, max: 200 })
+        .trim(),
+    check('description', 'Description must be between 10 and 2000 characters')
+        .optional()
+        .isLength({ min: 10, max: 2000 })
+        .trim(),
+    check('course', 'Please provide a valid course ID')
+        .optional()
+        .isMongoId(),
+    check('duration', 'Duration must be a positive number')
+        .optional()
+        .isInt({ min: 1 })
+        .toInt(),
+    check('isFree', 'isFree must be a boolean')
+        .optional()
+        .isBoolean()
+        .toBoolean(),
+    check('order', 'Order must be a non-negative number')
+        .optional()
+        .isInt({ min: 0 })
+        .toInt()
+];
 
-const upload = multer({
-    storage: storage,
-    fileFilter: fileFilter,
-    limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit
-});
+// Wrap update validations with validateRequest middleware
+const validateVideoUpdate = validateRequest(videoUpdateValidations);
 
 // Public routes
 router.get('/', getVideos);
@@ -68,26 +87,112 @@ router.use(protect);
 router.post(
     '/upload',
     authorize('teacher', 'admin'),
-    upload.single('video'),
-    [
-        check('title', 'Title is required').not().isEmpty(),
-        check('description', 'Description is required').not().isEmpty(),
-        check('course', 'Course ID is required').not().isEmpty(),
-        check('duration', 'Duration is required').isNumeric()
-    ],
-    uploadVideo
+    // Upload middleware
+    (req, res, next) => {
+        uploadVideoMiddleware(req, res, (err) => {
+            if (err) return next(err);
+            next();
+        });
+    },
+    // Validate request
+    validateVideoUpload,
+    // Process upload
+    async (req, res, next) => {
+        try {
+            await uploadVideo(req, res, next);
+            
+            // If we get here, the upload was successful
+            res.status(201).json({
+                success: true,
+                message: 'Video uploaded successfully',
+                data: {
+                    id: req.file.filename.replace(/\.[^/.]+$/, ''),
+                    url: `/uploads/videos/${req.file.filename}`,
+                    ...req.fileInfo
+                }
+            });
+            
+            // Clean up temp files after successful response
+            if (req.file?.path) {
+                await cleanupTempFiles(req, res, () => {});
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
 );
 
 router
     .route('/:id')
     .put(
         authorize('teacher', 'admin'),
-        [
-            check('title', 'Title is required').not().isEmpty(),
-            check('description', 'Description is required').not().isEmpty()
-        ],
+        validateVideoUpdate,
         updateVideo
     )
     .delete(authorize('teacher', 'admin'), deleteVideo);
+
+// Error handling middleware
+router.use((err, req, res, next) => {
+    // Clean up temp files if they exist
+    if (req.file?.path) {
+        try {
+            // Ensure cleanup happens synchronously before sending response
+            cleanupTempFiles(req, res, () => {});
+        } catch (cleanupError) {
+            console.error('Error during temp file cleanup:', cleanupError);
+        }
+    }
+
+    // Handle our custom ApiError
+    if (err instanceof ApiError) {
+        return res.status(err.statusCode).json({
+            success: false,
+            message: err.message,
+            errors: err.errors
+        });
+    }
+
+    // Handle validation errors
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({
+            success: false,
+            message: 'Validation Error',
+            errors: Object.values(err.errors).map(e => e.message)
+        });
+    }
+
+    // Handle multer file upload errors
+    if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+            success: false,
+            message: 'File size too large. Maximum allowed size is 100MB.'
+        });
+    }
+
+    // Handle invalid file type errors
+    if (err.code === 'INVALID_FILE_TYPE') {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid file type. Only video files are allowed.'
+        });
+    }
+
+    // Handle multer errors
+    if (err.name === 'MulterError') {
+        return res.status(400).json({
+            success: false,
+            message: 'File Upload Error',
+            error: err.message
+        });
+    }
+
+    // Handle other errors
+    console.error('Error in videos route:', err);
+    res.status(err.statusCode || 500).json({
+        success: false,
+        message: err.message || 'Internal Server Error',
+        ...(process.env.NODE_ENV === 'development' && { error: err.stack })
+    });
+});
 
 export default router;

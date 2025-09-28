@@ -1,5 +1,4 @@
 import nodemailer from 'nodemailer';
-import { promisify } from 'util';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -34,13 +33,10 @@ if (!missingVars.length) {
       console.error('SMTP Connection Error:', error);
       console.error('Please check your SMTP settings in the .env file');
     } else {
-      console.log('✅ SMTP Server is ready to take our messages');
+      console.log('SMTP Server is ready to take our messages');
     }
   });
 }
-
-// Promisify sendMail
-const sendMailAsync = promisify(transporter.sendMail).bind(transporter);
 
 /**
  * Send an email
@@ -51,44 +47,33 @@ const sendMailAsync = promisify(transporter.sendMail).bind(transporter);
  */
 const sendEmail = async ({ email, subject, message }) => {
   try {
-    // Build mail options properly ✅
+    // Skip sending if required environment variables are missing
+    if (missingVars.length > 0) {
+      console.warn('⚠️  Email not sent - missing environment variables');
+      return { success: false, message: 'Email service not configured' };
+    }
+
+    // Setup email data
     const mailOptions = {
       from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
       to: email,
-      subject,
-      html: message
+      subject: subject,
+      text: message.replace(/<[^>]*>?/gm, ''), // plain text body
+      html: message // html body
     };
 
-    // Debug log (only in dev mode)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('\n===== ATTEMPTING TO SEND EMAIL =====');
-      console.log('Mail Options:', {
-        ...mailOptions,
-        from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`
-      });
-      console.log('=====================================\n');
-    }
-
-    // Verify connection before sending
-    await transporter.verify();
-
-    // Send email
-    const info = await sendMailAsync(mailOptions);
-    console.log('📧 Email sent successfully:', info.messageId);
-
-    return true;
-
+    // Send email using the Promise-based API
+    const info = await transporter.sendMail(mailOptions);
+    
+    console.log('📧 Message sent: %s', info.messageId);
+    return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('❌ Email sending failed:', error);
-
-    if (error.code === 'EAUTH') {
-      throw new Error('Authentication failed. Please check your email credentials.');
-    } else if (error.code === 'EENVELOPE') {
-      throw new Error('Invalid email address or missing recipient.');
-    } else if (error.code === 'ECONNECTION') {
-      throw new Error('Could not connect to the email server. Please check your internet connection.');
-    }
-
+    console.error('❌ Error sending email:', error);
+    return { 
+      success: false, 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    };
     throw new Error(`Email could not be sent: ${error.message}`);
   }
 };

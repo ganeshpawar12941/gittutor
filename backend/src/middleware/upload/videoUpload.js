@@ -1,0 +1,177 @@
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs/promises';
+import { v4 as uuidv4 } from 'uuid';
+import { fileURLToPath } from 'url';
+import ApiError from '../../utils/ApiError.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Configure storage for temporary files
+const storage = multer.diskStorage({
+    destination: async function (req, file, cb) {
+        try {
+            const uploadDir = path.join(__dirname, '../../../uploads/temp');
+            await fs.mkdir(uploadDir, { recursive: true });
+            cb(null, uploadDir);
+        } catch (error) {
+            cb(new ApiError(500, 'Failed to create upload directory'));
+        }
+    },
+    filename: function (req, file, cb) {
+        try {
+            const uniqueSuffix = `${Date.now()}-${uuidv4()}`;
+            const ext = path.extname(file.originalname).toLowerCase();
+            const filename = `video-${uniqueSuffix}${ext}`;
+            cb(null, filename);
+        } catch (error) {
+            cb(new ApiError(400, 'Invalid filename'));
+        }
+    }
+});
+
+// File filter to only allow video files
+const fileFilter = (req, file, cb) => {
+    try {
+        const allowedTypes = [
+            'video/mp4',
+            'video/quicktime',
+            'video/x-msvideo',
+            'video/x-ms-wmv',
+            'video/x-matroska',
+            'video/webm',
+            'video/3gpp',
+            'video/3gpp2',
+            'video/mpeg',
+            'video/ogg'
+        ];
+
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new ApiError(400, 'Invalid file type. Only video files are allowed.'), false);
+        }
+    } catch (error) {
+        cb(error, false);
+    }
+};
+
+// Configure multer upload with enhanced error handling
+const upload = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: {
+        fileSize: 6 * 1024 * 1024 * 1024, // 6GB max file size
+        files: 1, // Limit to 1 file per request
+        fieldSize: 6 * 1024 * 1024 * 1024 // 6GB max field size
+    }
+});
+
+/**
+ * Middleware to handle video file upload
+ * Adds file info to req.file and additional metadata to req.fileInfo
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+export const uploadVideo = async (req, res, next) => {
+    try {
+        // First, handle the file upload
+        const uploadSingle = upload.single('video');
+        
+        // Wrap the callback in a Promise to handle async/await
+        await new Promise((resolve, reject) => {
+            uploadSingle(req, res, (err) => {
+                if (err) {
+                    // Handle multer errors with specific error messages
+                    if (err instanceof multer.MulterError) {
+                        if (err.code === 'LIMIT_FILE_SIZE') {
+                            return reject(new ApiError(413, 'File size exceeds the 6GB limit'));
+                        }
+                        return reject(new ApiError(400, `Upload error: ${err.message}`));
+                    }
+                    // Handle other errors
+                    return reject(err);
+                }
+                
+                if (!req.file) {
+                    return reject(new ApiError(400, 'No file uploaded. Please upload a video file.'));
+                }
+                
+                resolve();
+            });
+        });
+        
+        // If we get here, the upload was successful
+        // Add file info to request object for controller
+        req.fileInfo = {
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            extension: path.extname(req.file.originalname).toLowerCase(),
+            tempPath: req.file.path
+        };
+        
+        next();
+    } catch (error) {
+        // Clean up any uploaded files if there was an error
+        if (req.file?.path) {
+            try {
+                await fs.unlink(req.file.path).catch(cleanupErr => {
+                    console.error('Error cleaning up file after upload error:', cleanupErr);
+                });
+            } catch (cleanupErr) {
+                console.error('Error during file cleanup after upload error:', cleanupErr);
+            }
+        }
+        
+        // Handle our custom ApiError or other errors
+        next(error instanceof ApiError ? error : new ApiError(500, 'Error processing file upload'));
+    }
+};
+
+/**
+ * Middleware to clean up temporary files in case of errors
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+export const cleanupTempFiles = async (req, res, next) => {
+    try {
+        // If there's a file in the request, clean it up
+        if (req.file?.path) {
+            try {
+                await fs.access(req.file.path);
+                await fs.unlink(req.file.path);
+                console.log('Temporary file cleaned up successfully:', req.file.path);
+            } catch (error) {
+                // Ignore file not found errors, log others
+                if (error.code !== 'ENOENT') {
+                    console.error('Failed to clean up temporary file:', error);
+                }
+            }
+        }
+        
+        // If there are multiple files (in case of array uploads)
+        if (req.files?.length) {
+            for (const file of req.files) {
+                try {
+                    await fs.access(file.path);
+                    await fs.unlink(file.path);
+                    console.log('Temporary file cleaned up successfully:', file.path);
+                } catch (error) {
+                    // Ignore file not found errors, log others
+                    if (error.code !== 'ENOENT') {
+                        console.error('Failed to clean up temporary file:', error);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error during temp file cleanup:', error);
+    } finally {
+        next();
+    }
+};
+

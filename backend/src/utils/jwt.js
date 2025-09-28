@@ -1,11 +1,6 @@
 import jwt from 'jsonwebtoken';
-import { promisify } from 'util';
 import User from '../models/User.js';
 import { unauthorized, forbidden } from './apiResponse.js';
-
-// Promisify JWT functions
-export const signToken = promisify(jwt.sign);
-export const verifyToken = promisify(jwt.verify);
 
 /**
  * Generate JWT token

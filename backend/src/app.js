@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 // Import middleware directly to avoid circular dependencies
 import errorHandler from './middleware/error/errorHandler.js';
-import { setSecurityPolicies } from './middleware/security/securityHeaders.js';
+import { securityHeaders, setSecurityPolicies } from './middleware/security/securityHeaders.js';
 import { configureCors } from './middleware/security/requestSanitization.js';
 import { consoleLogger, fileLogger } from './middleware/logging/logger.js';
 
@@ -29,7 +29,7 @@ const app = express();
 app.use(configureCors);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(setSecurityPolicies);
+app.use(securityHeaders);
 
 // Logging middleware
 app.use(consoleLogger);

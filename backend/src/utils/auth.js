@@ -1,14 +1,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { promisify } from 'util';
 import User from '../models/User.js';
 import { errorResponse } from './apiResponse.js';
-
-// Promisify bcrypt functions
-const genSalt = promisify(bcrypt.genSalt);
-const hash = promisify(bcrypt.hash);
-const compare = promisify(bcrypt.compare);
 
 /**
  * Generate JWT token

@@ -1,11 +1,8 @@
 import express from 'express';
 import { check } from 'express-validator';
-import { 
-    protect, 
-    authorize, 
-    uploadSingle,
-    validateRequest
-} from '../middleware/index.js';
+import { protect, authorize } from '../middleware/auth/index.js';
+import { validateRequest } from '../middleware/validation/validateRequest.js';
+import { uploadVideo } from '../middleware/upload/videoUpload.js';
 import {
     getCourses,
     getCourse,
@@ -29,13 +26,14 @@ router.use(protect);
 router.post(
     '/',
     authorize('admin'),
-    uploadSingle('thumbnail'),
+    uploadVideo, // Handle file upload
     [
         check('title', 'Title is required').not().isEmpty(),
         check('code', 'Course code is required').not().isEmpty(),
         check('description', 'Description is required').not().isEmpty(),
         check('thumbnail', 'Please upload a valid image file').optional()
     ],
+    validateRequest, // Validate the request after file upload
     createCourse
 );
 
@@ -43,13 +41,14 @@ router
     .route('/:id')
     .put(
         authorize('admin'),
-        uploadSingle('thumbnail'),
+        uploadVideo, // Handle file upload
         [
             check('title', 'Title is required').not().isEmpty(),
             check('code', 'Course code is required').not().isEmpty(),
             check('description', 'Description is required').not().isEmpty(),
             check('thumbnail', 'Please upload a valid image file').optional()
         ],
+        validateRequest, // Validate the request after file upload
         updateCourse
     )
     .delete(authorize('admin'), deleteCourse);

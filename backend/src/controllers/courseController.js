@@ -357,6 +357,24 @@ export const enrollInCourse = async (req, res) => {
             { new: true, runValidators: true }
         );
 
+        // Ensure an Enrollment document exists (used by notifications)
+        // Create if missing, or reactivate if found inactive
+        try {
+            const Enrollment = (await import('../models/Enrollment.js')).default;
+            const existing = await Enrollment.findOne({ student: req.user.id, course: course._id });
+            if (existing) {
+                if (!existing.isActive) {
+                    existing.isActive = true;
+                    await existing.save();
+                }
+            } else {
+                await Enrollment.create({ student: req.user.id, course: course._id, isActive: true });
+            }
+        } catch (enrollDocErr) {
+            // Do not fail the API for doc creation issues, but log it clearly
+            console.error('Enrollment document upsert error:', enrollDocErr);
+        }
+
         res.status(200).json({
             success: true,
             message: 'Successfully enrolled in course'

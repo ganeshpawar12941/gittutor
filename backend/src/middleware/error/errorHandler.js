@@ -14,43 +14,49 @@ const { JsonWebTokenError, TokenExpiredError } = jwt;
 const errorHandler = (err, req, res, next) => {
     console.error('Error:', err);
 
+    // Check if headers already sent
+    if (res.headersSent) {
+        console.error('Headers already sent, cannot send error response');
+        return next(err);
+    }
+
     // Mongoose Validation Error
     if (err.name === 'ValidationError') {
         const errors = {};
         Object.keys(err.errors).forEach((key) => {
             errors[key] = err.errors[key].message;
         });
-        return errorResponse(res, 400, 'Validation Error', errors);
+        return error(res, 400, 'Validation Error', errors);
     }
 
     // MongoDB Duplicate Key Error
     if (err.code === 11000) {
         const field = err.keyValue ? Object.keys(err.keyValue)[0] : 'field';
-        return errorResponse(res, 400, `${field} already exists`);
+        return error(res, 400, `${field} already exists`);
     }
 
     // Invalid MongoDB ObjectId
     if (err.name === 'CastError') {
-        return errorResponse(res, 400, 'Invalid ID format');
+        return error(res, 400, 'Invalid ID format');
     }
 
     // JWT Expired Error (check first!)
     if (err instanceof TokenExpiredError) {
-        return errorResponse(res, 401, 'Token expired');
+        return error(res, 401, 'Token expired');
     }
 
     // JWT Error
     if (err instanceof JsonWebTokenError) {
-        return errorResponse(res, 401, 'Invalid token');
+        return error(res, 401, 'Invalid token');
     }
 
     // Multer File Upload Error
     if (err.name === 'MulterError') {
-        return errorResponse(res, 400, `File upload error: ${err.message}`);
+        return error(res, 400, `File upload error: ${err.message}`);
     }
 
     // Default / Unknown Error
-    return errorResponse(
+    return error(
         res,
         err.statusCode || 500,
         err.message || 'Internal Server Error'

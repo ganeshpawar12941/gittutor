@@ -2,7 +2,7 @@ import express from 'express';
 import { check } from 'express-validator';
 import { protect, authorize } from '../middleware/auth/index.js';
 import { validateRequest } from '../middleware/validation/validateRequest.js';
-import { uploadVideo as uploadVideoMiddleware, cleanupTempFiles } from '../middleware/upload/videoUpload.js';
+import { uploadVideo as uploadVideoMiddleware, cleanupTempFiles, parseVideoUpdateForm } from '../middleware/upload/videoUpload.js';
 import ApiError from '../utils/ApiError.js';
 
 import {
@@ -97,35 +97,20 @@ router.post(
     // Validate request
     validateVideoUpload,
     // Process upload
-    async (req, res, next) => {
-        try {
-            await uploadVideo(req, res, next);
-            
-            // If we get here, the upload was successful
-            res.status(201).json({
-                success: true,
-                message: 'Video uploaded successfully',
-                data: {
-                    id: req.file.filename.replace(/\.[^/.]+$/, ''),
-                    url: `/uploads/videos/${req.file.filename}`,
-                    ...req.fileInfo
-                }
-            });
-            
-            // Clean up temp files after successful response
-            if (req.file?.path) {
-                await cleanupTempFiles(req, res, () => {});
-            }
-        } catch (error) {
-            next(error);
-        }
-    }
+    uploadVideo
 );
 
 router
     .route('/:id')
     .put(
         authorize('teacher', 'admin'),
+        // allow multipart form-data with optional thumbnail for updates
+        (req, res, next) => {
+            parseVideoUpdateForm(req, res, (err) => {
+                if (err) return next(err);
+                next();
+            });
+        },
         validateVideoUpdate,
         updateVideo
     )
@@ -133,6 +118,12 @@ router
 
 // Error handling middleware
 router.use((err, req, res, next) => {
+    // Check if headers already sent
+    if (res.headersSent) {
+        console.error('Headers already sent in videos route, passing to next error handler');
+        return next(err);
+    }
+
     // Clean up temp files if they exist
     if (req.file?.path) {
         try {
@@ -188,7 +179,7 @@ router.use((err, req, res, next) => {
 
     // Handle other errors
     console.error('Error in videos route:', err);
-    res.status(err.statusCode || 500).json({
+    return res.status(err.statusCode || 500).json({
         success: false,
         message: err.message || 'Internal Server Error',
         ...(process.env.NODE_ENV === 'development' && { error: err.stack })

@@ -23,7 +23,8 @@ const storage = multer.diskStorage({
         try {
             const uniqueSuffix = `${Date.now()}-${uuidv4()}`;
             const ext = path.extname(file.originalname).toLowerCase();
-            const filename = `video-${uniqueSuffix}${ext}`;
+            const prefix = file.fieldname === 'thumbnail' ? 'thumb' : 'video';
+            const filename = `${prefix}-${uniqueSuffix}${ext}`;
             cb(null, filename);
         } catch (error) {
             cb(new ApiError(400, 'Invalid filename'));
@@ -31,10 +32,10 @@ const storage = multer.diskStorage({
     }
 });
 
-// File filter to only allow video files
+// File filter to allow video for field 'video' and image for field 'thumbnail'
 const fileFilter = (req, file, cb) => {
     try {
-        const allowedTypes = [
+        const videoTypes = [
             'video/mp4',
             'video/quicktime',
             'video/x-msvideo',
@@ -46,14 +47,59 @@ const fileFilter = (req, file, cb) => {
             'video/mpeg',
             'video/ogg'
         ];
+        const imageTypes = [
+            'image/jpeg', 'image/jpg', 'image/png', 'image/webp'
+        ];
 
-        if (allowedTypes.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new ApiError(400, 'Invalid file type. Only video files are allowed.'), false);
+        if (file.fieldname === 'video' && videoTypes.includes(file.mimetype)) {
+            return cb(null, true);
         }
+        if (file.fieldname === 'thumbnail' && imageTypes.includes(file.mimetype)) {
+            return cb(null, true);
+        }
+        return cb(new ApiError(400, 'Invalid file type for field'), false);
     } catch (error) {
         cb(error, false);
+    }
+};
+
+/**
+ * Middleware to parse form-data for video update (thumbnail optional)
+ * - Does NOT require a video file
+ * - Populates req.thumbnailFile if provided
+ */
+export const parseVideoUpdateForm = async (req, res, next) => {
+    try {
+        const parseFields = upload.fields([
+            { name: 'thumbnail', maxCount: 1 }
+        ]);
+
+        await new Promise((resolve, reject) => {
+            parseFields(req, res, (err) => {
+                if (err) {
+                    if (err instanceof multer.MulterError) {
+                        if (err.code === 'LIMIT_FILE_SIZE') {
+                            return reject(new ApiError(413, 'File size exceeds the 6GB limit'));
+                        }
+                        return reject(new ApiError(400, `Upload error: ${err.message}`));
+                    }
+                    return reject(err);
+                }
+                req.thumbnailFile = req.files?.thumbnail?.[0] || null;
+                resolve();
+            });
+        });
+
+        next();
+    } catch (error) {
+        if (req.thumbnailFile?.path) {
+            try {
+                await fs.unlink(req.thumbnailFile.path);
+            } catch (cleanupErr) {
+                console.error('Error during thumbnail cleanup after parse error:', cleanupErr);
+            }
+        }
+        next(error instanceof ApiError ? error : new ApiError(500, 'Error parsing update form data'));
     }
 };
 
@@ -63,7 +109,7 @@ const upload = multer({
     fileFilter: fileFilter,
     limits: {
         fileSize: 6 * 1024 * 1024 * 1024, // 6GB max file size
-        files: 1, // Limit to 1 file per request
+        files: 2, // Allow video + thumbnail
         fieldSize: 6 * 1024 * 1024 * 1024 // 6GB max field size
     }
 });
@@ -77,12 +123,15 @@ const upload = multer({
  */
 export const uploadVideo = async (req, res, next) => {
     try {
-        // First, handle the file upload
-        const uploadSingle = upload.single('video');
+        // Handle the file upload for both fields
+        const uploadFields = upload.fields([
+            { name: 'video', maxCount: 1 },
+            { name: 'thumbnail', maxCount: 1 }
+        ]);
         
         // Wrap the callback in a Promise to handle async/await
         await new Promise((resolve, reject) => {
-            uploadSingle(req, res, (err) => {
+            uploadFields(req, res, (err) => {
                 if (err) {
                     // Handle multer errors with specific error messages
                     if (err instanceof multer.MulterError) {
@@ -95,10 +144,13 @@ export const uploadVideo = async (req, res, next) => {
                     return reject(err);
                 }
                 
-                if (!req.file) {
-                    return reject(new ApiError(400, 'No file uploaded. Please upload a video file.'));
+                const videoFile = req.files?.video?.[0];
+                if (!videoFile) {
+                    return reject(new ApiError(400, 'No video uploaded. Field name must be "video".'));
                 }
-                
+                // Normalize for downstream compatibility
+                req.file = videoFile;
+                req.thumbnailFile = req.files?.thumbnail?.[0] || null;
                 resolve();
             });
         });
@@ -123,6 +175,16 @@ export const uploadVideo = async (req, res, next) => {
                 });
             } catch (cleanupErr) {
                 console.error('Error during file cleanup after upload error:', cleanupErr);
+            }
+        }
+        // Also cleanup thumbnail file if present
+        if (req.thumbnailFile?.path) {
+            try {
+                await fs.unlink(req.thumbnailFile.path).catch(cleanupErr => {
+                    console.error('Error cleaning up thumbnail after upload error:', cleanupErr);
+                });
+            } catch (cleanupErr) {
+                console.error('Error during thumbnail cleanup after upload error:', cleanupErr);
             }
         }
         
@@ -153,17 +215,21 @@ export const cleanupTempFiles = async (req, res, next) => {
             }
         }
         
-        // If there are multiple files (in case of array uploads)
-        if (req.files?.length) {
-            for (const file of req.files) {
-                try {
-                    await fs.access(file.path);
-                    await fs.unlink(file.path);
-                    console.log('Temporary file cleaned up successfully:', file.path);
-                } catch (error) {
-                    // Ignore file not found errors, log others
-                    if (error.code !== 'ENOENT') {
-                        console.error('Failed to clean up temporary file:', error);
+        // If there are multiple files via fields (object of arrays)
+        if (req.files && !Array.isArray(req.files)) {
+            for (const key of Object.keys(req.files)) {
+                const arr = req.files[key];
+                if (Array.isArray(arr)) {
+                    for (const file of arr) {
+                        try {
+                            await fs.access(file.path);
+                            await fs.unlink(file.path);
+                            console.log('Temporary file cleaned up successfully:', file.path);
+                        } catch (error) {
+                            if (error.code !== 'ENOENT') {
+                                console.error('Failed to clean up temporary file:', error);
+                            }
+                        }
                     }
                 }
             }

@@ -1,6 +1,7 @@
 import Enrollment from '../models/Enrollment.js';
 import Course from '../models/Course.js';
 import User from '../models/User.js';
+import Video from '../models/Video.js';
 import Notification from '../models/Notification.js';
 import nodemailer from 'nodemailer';
 
@@ -23,17 +24,62 @@ export const transporter = nodemailer.createTransport({
  */
 export const notifyStudentsAboutNewVideo = async (videoId, courseId, teacherId) => {
     try {
+        console.log('=== Starting notification process ===');
+        console.log('Video ID:', videoId);
+        console.log('Course ID:', courseId);
+        console.log('Teacher ID:', teacherId);
+
         const course = await Course.findById(courseId).populate('teacher', 'name');
         const video = await Video.findById(videoId);
         
         if (!course || !video) {
             console.error('Course or video not found');
+            console.error('Course:', course ? 'Found' : 'Not found');
+            console.error('Video:', video ? 'Found' : 'Not found');
             return;
         }
 
-        // Get all enrolled students
-        const enrollments = await Enrollment.find({ course: courseId })
-            .populate('student', 'email name');
+        console.log('Course found:', course.title);
+        console.log('Video found:', video.title);
+
+        // Get all enrolled students (including inactive ones for notifications)
+        const enrollments = await Enrollment.find({ 
+            course: courseId,
+            isActive: true 
+        }).populate('student', 'email name');
+
+        console.log(`Found ${enrollments.length} enrolled students`);
+        
+        // Debug: Check all enrollments for this course (without filter)
+        const allEnrollments = await Enrollment.find({ course: courseId });
+        console.log(`Total enrollments (including inactive): ${allEnrollments.length}`);
+        
+        // Debug: Check if courseId is correct format
+        console.log('Course ID type:', typeof courseId);
+        console.log('Course ID value:', courseId);
+        
+        if (enrollments.length === 0) {
+            console.log('No active enrollments found. Checking database...');
+            const sampleEnrollment = await Enrollment.findOne({});
+            if (sampleEnrollment) {
+                console.log('Sample enrollment found:', {
+                    course: sampleEnrollment.course,
+                    student: sampleEnrollment.student,
+                    isActive: sampleEnrollment.isActive
+                });
+            } else {
+                console.log('No enrollments exist in database at all');
+            }
+            return; // Exit early if no students to notify
+        }
+        
+        enrollments.forEach((enrollment, index) => {
+            console.log(`Student ${index + 1}:`, {
+                name: enrollment.student?.name,
+                email: enrollment.student?.email,
+                id: enrollment.student?._id
+            });
+        });
 
         // Prepare email content
         const mailOptions = {
@@ -61,32 +107,51 @@ export const notifyStudentsAboutNewVideo = async (videoId, courseId, teacherId) 
         };
 
         // Send email to each enrolled student
-        const notificationPromises = enrollments.map(async (enrollment) => {
-            const student = enrollment.student;
-            
-            // Save notification to database
-            const notification = new Notification({
-                recipient: student._id,
-                course: courseId,
-                video: videoId,
-                title: `New Video: ${video.title}`,
-                message: `A new video has been uploaded to ${course.title} by ${course.teacher.name}`
-            });
-            await notification.save();
+        const notificationPromises = enrollments.map(async (enrollment, index) => {
+            try {
+                const student = enrollment.student;
+                
+                if (!student || !student.email) {
+                    console.error(`Student ${index + 1} has no email address`);
+                    return;
+                }
+                
+                console.log(`Processing notification ${index + 1}/${enrollments.length} for ${student.email}`);
+                
+                // Save notification to database
+                const notification = new Notification({
+                    recipient: student._id,
+                    course: courseId,
+                    video: videoId,
+                    title: `New Video: ${video.title}`,
+                    message: `A new video has been uploaded to ${course.title} by ${course.teacher.name}`
+                });
+                await notification.save();
+                console.log(`Database notification saved for ${student.email}`);
 
-            // Send email
-            const emailOptions = {
-                ...mailOptions,
-                to: student.email,
-                text: mailOptions.text.replace('{name}', student.name),
-                html: mailOptions.html.replace(/{name}/g, student.name)
-            };
+                // Send email
+                const emailOptions = {
+                    ...mailOptions,
+                    to: student.email,
+                    text: mailOptions.text.replace('{name}', student.name),
+                    html: mailOptions.html.replace(/{name}/g, student.name)
+                };
 
-            return transporter.sendMail(emailOptions);
+                const emailResult = await transporter.sendMail(emailOptions);
+                console.log(`Email sent successfully to ${student.email}:`, emailResult.messageId);
+                return emailResult;
+            } catch (error) {
+                console.error(`Error sending notification to student ${index + 1}:`, error.message);
+                throw error;
+            }
         });
 
-        await Promise.all(notificationPromises);
-        console.log(`Notifications sent for video ${videoId} in course ${courseId}`);
+        const results = await Promise.allSettled(notificationPromises);
+        const successful = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+        
+        console.log(`Notification summary: ${successful} successful, ${failed} failed`);
+        console.log(`Notifications completed for video ${videoId} in course ${courseId}`);
     } catch (error) {
         console.error('Error sending notifications:', error);
     }

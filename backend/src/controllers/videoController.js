@@ -5,7 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { notifyStudentsAboutNewVideo } from './enrollmentController.js';
-import { uploadToS3, deleteFromS3 } from '../utils/awsS3.js';
+import { uploadToS3, deleteFromS3, getSignedGetUrl } from '../utils/awsS3.js';
+import { cloudinary } from '../utils/cloudinary.js';
 import ApiError from '../utils/ApiError.js';
 import { unlink } from 'fs/promises';
 
@@ -100,9 +101,13 @@ export const getVideo = async (req, res, next) => {
             throw new ApiError(404, 'Video not found');
         }
 
+        // Attach a signed URL for secure playback/download (expires in 1 hour)
+        const signedUrl = video?.s3Key ? await getSignedGetUrl(video.s3Key, 3600) : undefined;
+
         res.status(200).json({
             success: true,
-            data: video
+            data: video,
+            signedUrl
         });
     } catch (error) {
         if (error.kind === 'ObjectId') {
@@ -143,9 +148,33 @@ export const uploadVideo = async (req, res, next) => {
         }
 
         let uploadResult;
+        let uploadedThumbnailUrl = '';
         try {
             // Upload to S3
             uploadResult = await uploadToS3(req.file, `courses/${course}/videos`);
+
+            // If a thumbnail file is provided, upload to Cloudinary
+            if (req.thumbnailFile?.path) {
+                try {
+                    const thumbRes = await cloudinary.uploader.upload(req.thumbnailFile.path, {
+                        folder: 'gittutor/thumbnails',
+                        resource_type: 'image',
+                        transformation: [{ width: 800, height: 450, crop: 'fill' }],
+                        quality: 'auto:good'
+                    });
+                    uploadedThumbnailUrl = thumbRes.secure_url;
+                } catch (thumbErr) {
+                    console.error('Thumbnail upload failed:', thumbErr);
+                    // Continue without thumbnail
+                } finally {
+                    // Cleanup temp thumbnail regardless of success/failure
+                    try {
+                        if (req.thumbnailFile?.path) await unlink(req.thumbnailFile.path);
+                    } catch (e) {
+                        console.error('Error cleaning up temp thumbnail:', e);
+                    }
+                }
+            }
 
             // Create video record in database
             const video = await Video.create({
@@ -158,7 +187,7 @@ export const uploadVideo = async (req, res, next) => {
                 url: uploadResult.location,
                 s3Key: uploadResult.key,
                 bucket: uploadResult.bucket,
-                thumbnail: thumbnail || '',
+                thumbnail: uploadedThumbnailUrl || thumbnail || '',
                 uploadedBy: req.user.id,
                 size: uploadResult.size,
                 mimeType: uploadResult.mimetype || req.file.mimetype,
@@ -171,13 +200,17 @@ export const uploadVideo = async (req, res, next) => {
                 .populate('uploadedBy', 'name email');
 
             // Notify enrolled students about the new video (non-blocking)
-            notifyStudentsAboutNewVideo(course, video._id).catch(err => {
-                console.error('Error notifying students:', err);
+            notifyStudentsAboutNewVideo(video._id, course, req.user.id).catch(err => {
+                console.error('Error sending notifications:', err);
             });
+
+            // Generate a signed URL for this video (expires in 1 hour)
+            const signedUrl = video.s3Key ? await getSignedGetUrl(video.s3Key, 3600) : undefined;
 
             res.status(201).json({
                 success: true,
-                data: populatedVideo
+                data: populatedVideo,
+                signedUrl
             });
         } catch (error) {
             // If there's an error after S3 upload, clean up the S3 file
@@ -195,6 +228,14 @@ export const uploadVideo = async (req, res, next) => {
                 console.error('Error cleaning up temp file:', cleanupErr);
             }
         }
+        // Clean up thumbnail temp file if present
+        if (req.thumbnailFile?.path) {
+            try {
+                await unlink(req.thumbnailFile.path);
+            } catch (cleanupErr) {
+                console.error('Error cleaning up temp thumbnail:', cleanupErr);
+            }
+        }
         next(error);
     }
 };
@@ -206,7 +247,7 @@ export const uploadVideo = async (req, res, next) => {
  */
 export const updateVideo = async (req, res, next) => {
     try {
-        const { title, description, duration, isFree, order, isPublished, thumbnail } = req.body;
+        const { title, description, duration, isFree, order, isPublished, thumbnail } = req.body || {};
 
         // Find video and check existence
         const video = await Video.findById(req.params.id);
@@ -214,13 +255,13 @@ export const updateVideo = async (req, res, next) => {
             throw new ApiError(404, 'Video not found');
         }
 
-        // Verify user is the course instructor
+        // Verify user is the course teacher
         const course = await Course.findById(video.course);
         if (!course) {
             throw new ApiError(404, 'Associated course not found');
         }
 
-        if (course.instructor.toString() !== req.user.id) {
+        if (!course.teacher || course.teacher.toString() !== req.user.id) {
             throw new ApiError(403, 'Not authorized to update this video');
         }
 
@@ -233,6 +274,27 @@ export const updateVideo = async (req, res, next) => {
         if (order !== undefined) updateFields.order = order;
         if (isPublished !== undefined) updateFields.isPublished = isPublished;
         if (thumbnail !== undefined) updateFields.thumbnail = thumbnail;
+
+        // If a thumbnail file is attached via form-data, upload to Cloudinary
+        if (req.thumbnailFile?.path) {
+            try {
+                const thumbRes = await cloudinary.uploader.upload(req.thumbnailFile.path, {
+                    folder: 'gittutor/thumbnails',
+                    resource_type: 'image',
+                    transformation: [{ width: 800, height: 450, crop: 'fill' }],
+                    quality: 'auto:good'
+                });
+                updateFields.thumbnail = thumbRes.secure_url;
+            } catch (thumbErr) {
+                console.error('Thumbnail upload (update) failed:', thumbErr);
+            } finally {
+                try {
+                    await unlink(req.thumbnailFile.path);
+                } catch (cleanupErr) {
+                    console.error('Error cleaning up temp thumbnail (update):', cleanupErr);
+                }
+            }
+        }
 
         // Update video
         const updatedVideo = await Video.findByIdAndUpdate(
@@ -264,14 +326,14 @@ export const updateVideo = async (req, res, next) => {
 export const deleteVideo = async (req, res, next) => {
     try {
         // Find video with course populated for permission check
-        const video = await Video.findById(req.params.id).populate('course', 'instructor');
+        const video = await Video.findById(req.params.id).populate('course', 'teacher');
         
         if (!video) {
             throw new ApiError(404, 'Video not found');
         }
 
-        // Verify user is the course instructor or admin
-        if (video.course.instructor.toString() !== req.user.id && req.user.role !== 'admin') {
+        // Verify user is the course teacher or admin
+        if (!video.course.teacher || (video.course.teacher.toString() !== req.user.id && req.user.role !== 'admin')) {
             throw new ApiError(403, 'Not authorized to delete this video');
         }
 
@@ -316,10 +378,10 @@ export const getVideosByCourse = async (req, res, next) => {
         // Build query
         const query = { course: courseId };
         
-        // Non-instructors and unauthenticated users only see published videos
+        // Non-teachers and unauthenticated users only see published videos
         const isInstructor = req.user && 
             (req.user.role === 'admin' || 
-             course.instructor.toString() === req.user.id);
+             (course.teacher && course.teacher.toString() === req.user.id));
         
         if (!isInstructor) {
             query.isPublished = true;

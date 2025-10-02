@@ -1,14 +1,19 @@
-import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Configure AWS S3 client
+if (!process.env.AWS_REGION || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_S3_BUCKET_NAME) {
+    throw new Error('Missing required AWS configuration. Please set AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_S3_BUCKET_NAME environment variables.');
+}
+
 const s3Client = new S3Client({
     region: process.env.AWS_REGION,
     credentials: {
@@ -23,104 +28,47 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 
 /**
- * Uploads a file to S3 with multipart upload for large files
+ * Uploads a file to S3 with automatic multipart upload for large files
  * @param {Object} file - Multer file object
  * @param {String} folder - Folder path in S3 bucket (e.g., 'videos')
  * @returns {Promise<Object>} - Upload result with location and key
  */
 const uploadToS3 = async (file, folder = 'videos') => {
+    if (!file || !file.path) {
+        throw new Error('No file provided or file path is missing');
+    }
+    
     const fileStream = fs.createReadStream(file.path);
-    const fileKey = `${folder}/${Date.now()}-${file.originalname}`;
+    const fileKey = `${folder}/${Date.now()}-${file.originalname.replace(/[^\w\d.-]/g, '_')}`;
     
     try {
-        // Initiate multipart upload
-        const multipartUpload = await s3Client.send(
-            new CreateMultipartUploadCommand({
+        // Use AWS SDK's Upload class which handles multipart uploads automatically
+        const upload = new Upload({
+            client: s3Client,
+            params: {
                 Bucket: process.env.AWS_S3_BUCKET_NAME,
                 Key: fileKey,
+                Body: fileStream,
                 ContentType: file.mimetype
-            })
-        );
+            },
+            // Configure multipart upload settings
+            queueSize: 4, // Concurrent part uploads
+            partSize: CHUNK_SIZE, // 10MB parts
+            leavePartsOnError: false // Clean up failed uploads
+        });
 
-        const uploadId = multipartUpload.UploadId;
-        const fileSize = file.size;
-        const partCount = Math.ceil(fileSize / CHUNK_SIZE);
-        const parts = [];
-
-        // Upload each part
-        for (let partNumber = 1; partNumber <= partCount; partNumber++) {
-            const start = (partNumber - 1) * CHUNK_SIZE;
-            const end = Math.min(start + CHUNK_SIZE, fileSize);
-            const partSize = end - start;
-            
-            let retries = 0;
-            let lastError;
-            
-            while (retries < MAX_RETRIES) {
-                try {
-                    const uploadUrl = await getSignedUrl(
-                        s3Client,
-                        new UploadPartCommand({
-                            Bucket: process.env.AWS_S3_BUCKET_NAME,
-                            Key: fileKey,
-                            PartNumber: partNumber,
-                            UploadId: uploadId,
-                            ContentLength: partSize
-                        }),
-                        { expiresIn: 3600 } // 1 hour URL expiration
-                    );
-
-                    // Upload the part
-                    const response = await fetch(uploadUrl, {
-                        method: 'PUT',
-                        body: fileStream.pipe(
-                            new require('stream').Transform({
-                                transform(chunk, encoding, callback) {
-                                    this.push(chunk);
-                                    callback();
-                                }
-                            })
-                        ),
-                        headers: {
-                            'Content-Length': partSize,
-                            'Content-Type': file.mimetype
-                        }
-                    });
-
-                    if (!response.ok) throw new Error('Part upload failed');
-                    
-                    const eTag = response.headers.get('etag');
-                    parts.push({ PartNumber: partNumber, ETag: eTag });
-                    break;
-                } catch (error) {
-                    lastError = error;
-                    retries++;
-                    if (retries === MAX_RETRIES) {
-                        await s3Client.send(
-                            new AbortMultipartUploadCommand({
-                                Bucket: process.env.AWS_S3_BUCKET_NAME,
-                                Key: fileKey,
-                                UploadId: uploadId
-                            })
-                        );
-                        throw new Error(`Failed to upload part ${partNumber} after ${MAX_RETRIES} attempts: ${lastError.message}`);
-                    }
-                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * retries));
-                }
+        // Monitor upload progress (optional)
+        upload.on('httpUploadProgress', (progress) => {
+            if (progress.loaded && progress.total) {
+                const percentage = Math.round((progress.loaded / progress.total) * 100);
+                console.log(`Upload progress: ${percentage}%`);
             }
-        }
+        });
 
-        // Complete multipart upload
-        await s3Client.send(
-            new CompleteMultipartUploadCommand({
-                Bucket: process.env.AWS_S3_BUCKET_NAME,
-                Key: fileKey,
-                UploadId: uploadId,
-                MultipartUpload: { Parts: parts }
-            })
-        );
+        // Wait for upload to complete
+        const result = await upload.done();
 
-        // Generate public URL
+        // Non-public S3 object URL (requires signed URL or bucket policy to access)
         const location = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
         
         return {
@@ -128,7 +76,8 @@ const uploadToS3 = async (file, folder = 'videos') => {
             key: fileKey,
             bucket: process.env.AWS_S3_BUCKET_NAME,
             size: file.size,
-            mimetype: file.mimetype
+            mimetype: file.mimetype,
+            etag: result.ETag
         };
     } catch (error) {
         console.error('Error uploading to S3:', error);
@@ -136,7 +85,11 @@ const uploadToS3 = async (file, folder = 'videos') => {
     } finally {
         // Clean up the temp file
         if (file.path) {
-            await fs.unlink(file.path);
+            try {
+                await fs.promises.unlink(file.path);
+            } catch (cleanupError) {
+                console.error('Error cleaning up temp file:', cleanupError);
+            }
         }
     }
 };
@@ -164,4 +117,18 @@ const deleteFromS3 = async (key) => {
 export {
     uploadToS3,
     deleteFromS3
+};
+
+/**
+ * Generate a presigned GET URL for an S3 object key
+ * @param {string} key - S3 object key
+ * @param {number} expiresIn - Expiration in seconds (default 3600 = 1h)
+ * @returns {Promise<string>} - Signed URL
+ */
+export const getSignedGetUrl = async (key, expiresIn = 3600) => {
+    const command = new GetObjectCommand({
+        Bucket: process.env.AWS_S3_BUCKET_NAME,
+        Key: key
+    });
+    return getSignedUrl(s3Client, command, { expiresIn });
 };

@@ -18,7 +18,7 @@ const commentSchema = new mongoose.Schema({
     },
     timestamp: {
         type: Number,
-        required: [true, 'Please provide a timestamp for the comment'],
+        default: 0,
         min: 0
     },
     isResolved: {
@@ -51,3 +51,4 @@ const commentSchema = new mongoose.Schema({
 commentSchema.index({ video: 1, timestamp: 1 });
 
 export default mongoose.model('Comment', commentSchema);
+

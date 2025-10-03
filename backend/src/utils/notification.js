@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import { v4 as uuidv4 } from 'uuid';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
-import { errorResponse } from './apiResponse.js';
+// (no apiResponse import needed)
 
 // Email transporter configuration
 const transporter = nodemailer.createTransport({
@@ -18,7 +18,7 @@ const transporter = nodemailer.createTransport({
 /**
  * Send an email notification
  * @param {Object} options - Email options
- * @param {string|Array} options.to - Recipient email(s)
+ * @param {string} options.to - Recipient email(s)
  * @param {string} options.subject - Email subject
  * @param {string} options.html - HTML content of the email
  * @param {string} [options.text] - Plain text content (optional)
@@ -30,7 +30,7 @@ const sendEmail = async ({ to, subject, html, text }) => {
             from: `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_FROM_ADDRESS}>`,
             to: Array.isArray(to) ? to.join(', ') : to,
             subject,
-            text: text || html.replace(/<[^>]*>/g, ''), // Convert HTML to plain text if text not provided
+            text: text || html.replace(/<[^>]*>/g, ''),
             html
         };
 
@@ -61,17 +61,23 @@ const createInAppNotification = async ({
     type = 'info',
     data = {},
     relatedEntityType = null,
-    relatedEntityId = null
+    relatedEntityId = null,
+    courseId = null,
+    videoId = null
 }) => {
     try {
         const notification = new Notification({
-            user: userId,
+            recipient: userId,
             title,
             message,
-            type,
+            // Persist contextual info for client deep-links
             data,
+            // Back-compat fields if schema supports
             relatedEntityType,
             relatedEntityId,
+            // Course/Video for faster filtering
+            course: courseId || undefined,
+            video: videoId || undefined,
             isRead: false
         });
 
@@ -92,7 +98,7 @@ const createInAppNotification = async ({
 const markAsRead = async (notificationId, userId) => {
     try {
         const notification = await Notification.findOneAndUpdate(
-            { _id: notificationId, user: userId },
+            { _id: notificationId, recipient: userId },
             { isRead: true, readAt: new Date() },
             { new: true }
         );
@@ -116,7 +122,7 @@ const markAsRead = async (notificationId, userId) => {
 const markAllAsRead = async (userId) => {
     try {
         await Notification.updateMany(
-            { user: userId, isRead: false },
+            { recipient: userId, isRead: false },
             { isRead: true, readAt: new Date() }
         );
 
@@ -138,7 +144,7 @@ const markAllAsRead = async (userId) => {
  */
 const getUserNotifications = async (userId, { page = 1, limit = 10, unreadOnly = false } = {}) => {
     try {
-        const query = { user: userId };
+        const query = { recipient: userId };
         if (unreadOnly) {
             query.isRead = false;
         }
@@ -147,7 +153,7 @@ const getUserNotifications = async (userId, { page = 1, limit = 10, unreadOnly =
 
         const [notifications, total] = await Promise.all([
             Notification.find(query)
-                .sort({ createdAt: -1 })
+                .sort({ sentAt: -1 })
                 .skip(skip)
                 .limit(limit),
             Notification.countDocuments(query)
@@ -189,7 +195,7 @@ const sendBulkNotification = async (userIds, notificationData, sendEmailNotifica
         // Create notifications for all users
         for (const user of users) {
             const notification = new Notification({
-                user: user._id,
+                recipient: user._id,
                 ...notificationData
             });
             notifications.push(notification);
@@ -222,11 +228,40 @@ const sendBulkNotification = async (userIds, notificationData, sendEmailNotifica
     }
 };
 
+// Module-scoped helpers to be imported by controllers
+const notifyTeacherOnNewComment = async ({ teacherId, courseId, videoId, commentId, commenterName }) => {
+    const title = 'New comment on your video';
+    const message = `${commenterName} commented on your video.`;
+    return createInAppNotification({
+        userId: teacherId,
+        title,
+        message,
+        data: { action: 'comment', videoId, commentId },
+        courseId,
+        videoId
+    });
+};
+
+const notifyCommentOwnerOnReply = async ({ recipientUserId, courseId, videoId, commentId, replierName }) => {
+    const title = 'New reply to your comment';
+    const message = `${replierName} replied to your comment.`;
+    return createInAppNotification({
+        userId: recipientUserId,
+        title,
+        message,
+        data: { action: 'reply', videoId, commentId },
+        courseId,
+        videoId
+    });
+};
+
 export {
     sendEmail,
     createInAppNotification,
     markAsRead,
     markAllAsRead,
     getUserNotifications,
-    sendBulkNotification
+    sendBulkNotification,
+    notifyTeacherOnNewComment,
+    notifyCommentOwnerOnReply
 };

@@ -1,6 +1,8 @@
 import Comment from '../models/Comment.js';
 import Video from '../models/Video.js';
+import Course from '../models/Course.js';
 import { validationResult } from 'express-validator';
+import { notifyTeacherOnNewComment , notifyCommentOwnerOnReply } from '../utils/notification.js';
 
 // @desc    Get comments for a video
 // @route   GET /api/comments/video/:videoId
@@ -35,7 +37,7 @@ export const createComment = async (req, res) => {
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const { content, videoId, timestamp } = req.body;
+        const { content, videoId } = req.body;
 
         // Check if video exists
         const video = await Video.findById(videoId);
@@ -63,11 +65,25 @@ export const createComment = async (req, res) => {
             content,
             video: videoId,
             user: req.user.id,
-            timestamp: timestamp || 0
         });
 
         // Populate user details
-        await comment.populate('user', 'name email').execPopulate();
+        await comment.populate('user', 'name email');
+
+        // Notify the teacher/uploader about the new comment (non-blocking)
+        try {
+            if (video.uploadedBy?.toString() !== req.user.id) {
+                await notifyTeacherOnNewComment({
+                    teacherId: video.uploadedBy,
+                    courseId: video.course,
+                    videoId: video._id,
+                    commentId: comment._id,
+                    commenterName: comment.user?.name || 'Someone'
+                });
+            }
+        } catch (e) {
+            console.error('notifyTeacherOnNewComment error:', e);
+        }
 
         res.status(201).json({
             success: true,
@@ -121,8 +137,8 @@ export const updateComment = async (req, res) => {
         
         await comment.save();
 
-        // Populate user details
-        await comment.populate('user', 'name email').execPopulate();
+        // Populate user details (Mongoose v6+)
+        await comment.populate('user', 'name email');
 
         res.status(200).json({
             success: true,
@@ -168,7 +184,7 @@ export const deleteComment = async (req, res) => {
             });
         }
 
-        await comment.remove();
+        await comment.deleteOne();
 
         res.status(200).json({
             success: true,
@@ -283,6 +299,25 @@ export const replyToComment = async (req, res) => {
         
         // Get the newly added reply (last one in the array)
         const newReply = populatedComment.replies[populatedComment.replies.length - 1];
+
+        // Notify original commenter when teacher/video owner/admin replies
+        try {
+            const isTeacherOrAdmin = req.user.role === 'teacher' || req.user.role === 'admin';
+            const video = await Video.findById(comment.video);
+            const isVideoOwner = video && video.uploadedBy?.toString() === req.user.id;
+            if ((isTeacherOrAdmin || isVideoOwner) && comment.user?.toString() !== req.user.id) {
+                const replierName = newReply?.user?.name || 'Instructor';
+                await notifyCommentOwnerOnReply({
+                    recipientUserId: comment.user,
+                    courseId: video.course,
+                    videoId: video._id,
+                    commentId: comment._id,
+                    replierName
+                });
+            }
+        } catch (e) {
+            console.error('notifyCommentOwnerOnReply error:', e);
+        }
 
         res.status(201).json({
             success: true,

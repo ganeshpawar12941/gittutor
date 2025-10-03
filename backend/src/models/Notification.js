@@ -16,6 +16,10 @@ const notificationSchema = new mongoose.Schema({
         ref: 'Video',
         required: true
     },
+    comment: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Comment'
+    },
     title: {
         type: String,
         required: true
@@ -23,6 +27,10 @@ const notificationSchema = new mongoose.Schema({
     message: {
         type: String,
         required: true
+    },
+    data: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
     },
     isRead: {
         type: Boolean,
@@ -40,5 +48,6 @@ const notificationSchema = new mongoose.Schema({
 // Index for faster queries
 notificationSchema.index({ recipient: 1, isRead: 1 });
 notificationSchema.index({ course: 1, video: 1 });
+notificationSchema.index({ recipient: 1, sentAt: -1 });
 
 export default mongoose.model('Notification', notificationSchema);

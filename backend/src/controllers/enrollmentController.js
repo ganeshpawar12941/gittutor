@@ -118,13 +118,13 @@ export const notifyStudentsAboutNewVideo = async (videoId, courseId, teacherId) 
                 
                 console.log(`Processing notification ${index + 1}/${enrollments.length} for ${student.email}`);
                 
-                // Save notification to database
                 const notification = new Notification({
                     recipient: student._id,
                     course: courseId,
                     video: videoId,
                     title: `New Video: ${video.title}`,
-                    message: `A new video has been uploaded to ${course.title} by ${course.teacher.name}`
+                    message: `A new video has been uploaded to ${course.title} by ${course.teacher.name}`,
+                    data: { action: 'new_video', courseId, videoId }
                 });
                 await notification.save();
                 console.log(`Database notification saved for ${student.email}`);
@@ -136,7 +136,6 @@ export const notifyStudentsAboutNewVideo = async (videoId, courseId, teacherId) 
                     text: mailOptions.text.replace('{name}', student.name),
                     html: mailOptions.html.replace(/{name}/g, student.name)
                 };
-
                 const emailResult = await transporter.sendMail(emailOptions);
                 console.log(`Email sent successfully to ${student.email}:`, emailResult.messageId);
                 return emailResult;

@@ -22,8 +22,7 @@ router.post(
     '/',
     [
         check('content', 'Content is required').not().isEmpty(),
-        check('videoId', 'Video ID is required').not().isEmpty(),
-        check('timestamp', 'Timestamp is required').isNumeric()
+        check('videoId', 'Video ID is required').not().isEmpty()
     ],
     addComment
 );

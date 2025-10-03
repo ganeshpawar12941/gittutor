@@ -1,12 +1,6 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
-// Debug log Cloudinary config
-console.log('Cloudinary Config:', {
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? '***' : 'MISSING',
-    api_key: process.env.CLOUDINARY_API_KEY ? '***' : 'MISSING',
-    api_secret: process.env.CLOUDINARY_API_SECRET ? '***' : 'MISSING'
-});
 
 // Configure Cloudinary
 cloudinary.config({
